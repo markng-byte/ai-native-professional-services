@@ -1,0 +1,191 @@
+{
+  "skill_id": "intent-classifier",
+  "version": "1.0.0",
+  "baseline_score": null,
+  "current_score": null,
+  "last_run_date": null,
+  "minimum_pass_rate": 0.95,
+  "failure_log": [],
+  "test_cases": [
+    {
+      "id": "TC-001",
+      "description": "Clear jurisdiction comparison request",
+      "input": {
+        "session_id": "test-session-001",
+        "raw_message": "Can you compare the costs of incorporating in BVI versus Cayman Islands?",
+        "client_context": null
+      },
+      "expected_output": {
+        "intent_label": "RESEARCH",
+        "routing_target": "Research Agent",
+        "confidence_score_min": 0.9
+      },
+      "pass_criteria": "intent_label == RESEARCH and confidence_score >= 0.9"
+    },
+    {
+      "id": "TC-002",
+      "description": "Clear sanctions screening request",
+      "input": {
+        "session_id": "test-session-002",
+        "raw_message": "Please run a sanctions screen and PEP check on John Michael Doe, DOB 1975-03-14.",
+        "client_context": null
+      },
+      "expected_output": {
+        "intent_label": "COMPLIANCE",
+        "routing_target": "Compliance Agent",
+        "confidence_score_min": 0.95
+      },
+      "pass_criteria": "intent_label == COMPLIANCE and routing_target == Compliance Agent"
+    },
+    {
+      "id": "TC-003",
+      "description": "Clear document drafting request",
+      "input": {
+        "session_id": "test-session-003",
+        "raw_message": "I need you to draft an engagement letter for Acme Holdings for their new company formation mandate.",
+        "client_context": null
+      },
+      "expected_output": {
+        "intent_label": "DRAFTING",
+        "routing_target": "Drafting Agent",
+        "confidence_score_min": 0.9
+      },
+      "pass_criteria": "intent_label == DRAFTING and confidence_score >= 0.9"
+    },
+    {
+      "id": "TC-004",
+      "description": "Clear operational mandate renewal request",
+      "input": {
+        "session_id": "test-session-004",
+        "raw_message": "Which client mandates are expiring in the next 90 days?",
+        "client_context": null
+      },
+      "expected_output": {
+        "intent_label": "OPERATIONS",
+        "routing_target": "Operations Agent",
+        "confidence_score_min": 0.85
+      },
+      "pass_criteria": "intent_label == OPERATIONS and confidence_score >= 0.85"
+    },
+    {
+      "id": "TC-005",
+      "description": "Clear UBO traversal request — must route to Compliance, not Research",
+      "input": {
+        "session_id": "test-session-005",
+        "raw_message": "Who is the ultimate beneficial owner of Global Ventures Ltd?",
+        "client_context": null
+      },
+      "expected_output": {
+        "intent_label": "COMPLIANCE",
+        "routing_target": "Compliance Agent",
+        "confidence_score_min": 0.9
+      },
+      "pass_criteria": "intent_label == COMPLIANCE — must NOT route to Research Agent"
+    },
+    {
+      "id": "TC-006",
+      "description": "Vague request — must return AMBIGUOUS and escalate",
+      "input": {
+        "session_id": "test-session-006",
+        "raw_message": "Can you help me with my company?",
+        "client_context": null
+      },
+      "expected_output": {
+        "intent_label": "AMBIGUOUS",
+        "routing_target": "Human Intake Officer",
+        "confidence_score_max": 0.79
+      },
+      "pass_criteria": "intent_label == AMBIGUOUS and routing_target == Human Intake Officer and confidence_score < 0.8"
+    },
+    {
+      "id": "TC-007",
+      "description": "Multi-intent: draft + compliance — must detect dual intent and route to Compliance first",
+      "input": {
+        "session_id": "test-session-007",
+        "raw_message": "Please run a KYC check on our new client and then draft an engagement letter.",
+        "client_context": null
+      },
+      "expected_output": {
+        "intent_label": "COMPLIANCE",
+        "routing_target": "Compliance Agent",
+        "confidence_score_min": 0.8
+      },
+      "pass_criteria": "Compliance must be prioritised over Drafting when both are detected — compliance-first rule"
+    },
+    {
+      "id": "TC-008",
+      "description": "Regulatory research with jurisdiction — must route to Research, not Compliance",
+      "input": {
+        "session_id": "test-session-008",
+        "raw_message": "What are the substance requirements for a holding company in the British Virgin Islands?",
+        "client_context": null
+      },
+      "expected_output": {
+        "intent_label": "RESEARCH",
+        "routing_target": "Research Agent",
+        "confidence_score_min": 0.85
+      },
+      "pass_criteria": "intent_label == RESEARCH and NOT Compliance Agent"
+    },
+    {
+      "id": "TC-009",
+      "description": "Misspelled input — must still classify correctly",
+      "input": {
+        "session_id": "test-session-009",
+        "raw_message": "nead a engagment leter for my client XYZ",
+        "client_context": null
+      },
+      "expected_output": {
+        "intent_label": "DRAFTING",
+        "routing_target": "Drafting Agent",
+        "confidence_score_min": 0.75
+      },
+      "pass_criteria": "Must tolerate spelling errors and classify correctly"
+    },
+    {
+      "id": "TC-010",
+      "description": "Conflict of interest inquiry — must route to Compliance",
+      "input": {
+        "session_id": "test-session-010",
+        "raw_message": "Before we onboard this new client, can you check if there's any conflict of interest with our existing clients?",
+        "client_context": null
+      },
+      "expected_output": {
+        "intent_label": "COMPLIANCE",
+        "routing_target": "Compliance Agent",
+        "confidence_score_min": 0.9
+      },
+      "pass_criteria": "intent_label == COMPLIANCE and confidence_score >= 0.9"
+    },
+    {
+      "id": "TC-011",
+      "description": "Internal report generation — must route to Operations",
+      "input": {
+        "session_id": "test-session-011",
+        "raw_message": "Generate the monthly portfolio summary report for Officer Sarah Chen.",
+        "client_context": null
+      },
+      "expected_output": {
+        "intent_label": "OPERATIONS",
+        "routing_target": "Operations Agent",
+        "confidence_score_min": 0.85
+      },
+      "pass_criteria": "intent_label == OPERATIONS"
+    },
+    {
+      "id": "TC-012",
+      "description": "Banking introduction request — must route to Drafting",
+      "input": {
+        "session_id": "test-session-012",
+        "raw_message": "We need a banking introduction letter for Sunrise Capital to present to HSBC Singapore.",
+        "client_context": null
+      },
+      "expected_output": {
+        "intent_label": "DRAFTING",
+        "routing_target": "Drafting Agent",
+        "confidence_score_min": 0.9
+      },
+      "pass_criteria": "intent_label == DRAFTING and routing_target == Drafting Agent"
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "skill_id": "jurisdiction-compare",
+  "version": "1.0.0",
+  "baseline_score": null,
+  "current_score": null,
+  "last_run_date": null,
+  "minimum_pass_rate": 0.90,
+  "failure_log": [],
+  "test_cases": [
+    {
+      "id": "TC-JC-001",
+      "description": "Standard 2-jurisdiction comparison — BVI vs Cayman",
+      "input": {"jurisdictions": ["VG", "KY"], "comparison_dimensions": ["cost", "timeline", "tax", "substance"]},
+      "expected_output": {"comparison_table_rows": 4, "confidence_level": "HIGH"},
+      "pass_criteria": "Returns 4-row table with accurate data for both jurisdictions"
+    },
+    {
+      "id": "TC-JC-002",
+      "description": "3-jurisdiction comparison — SG vs HK vs UAE",
+      "input": {"jurisdictions": ["SG", "HK", "AE"], "comparison_dimensions": ["cost", "tax", "banking", "compliance"]},
+      "expected_output": {"comparison_table_rows": 4, "confidence_level": "HIGH"},
+      "pass_criteria": "Returns complete table with 3 jurisdiction columns"
+    },
+    {
+      "id": "TC-JC-003",
+      "description": "Single jurisdiction input — should reject",
+      "input": {"jurisdictions": ["VG"]},
+      "expected_output": {"error": "ERR_INSUFFICIENT_JURISDICTIONS"},
+      "pass_criteria": "Returns validation error — minimum 2 jurisdictions required"
+    },
+    {
+      "id": "TC-JC-004",
+      "description": "Jurisdiction not in corpus — should flag LOW confidence",
+      "input": {"jurisdictions": ["VG", "MH"], "comparison_dimensions": ["cost", "tax"]},
+      "expected_output": {"confidence_level": "LOW"},
+      "pass_criteria": "Returns data for BVI but flags Marshall Islands as incomplete with LOW confidence"
+    },
+    {
+      "id": "TC-JC-005",
+      "description": "With client profile — should include recommendation",
+      "input": {"jurisdictions": ["VG", "KY"], "client_profile": {"entity_type": "Fund", "residency_of_ubo": "AE"}},
+      "expected_output": {"recommendation_present": true},
+      "pass_criteria": "Recommendation field is populated with a ranked jurisdiction suggestion"
+    },
+    {
+      "id": "TC-JC-006",
+      "description": "All 7 dimensions requested explicitly",
+      "input": {"jurisdictions": ["SG", "HK"], "comparison_dimensions": ["cost", "timeline", "tax", "substance", "FATF", "banking", "compliance"]},
+      "expected_output": {"comparison_table_rows": 7},
+      "pass_criteria": "Returns all 7 rows with no missing dimensions"
+    },
+    {
+      "id": "TC-JC-007",
+      "description": "Source citation check — every data point must have a source",
+      "input": {"jurisdictions": ["VG", "KY"], "comparison_dimensions": ["tax"]},
+      "expected_output": {"source_citations_min": 1},
+      "pass_criteria": "source_citations array is non-empty and references valid documents or URLs"
+    },
+    {
+      "id": "TC-JC-008",
+      "description": "Invalid jurisdiction code — should reject",
+      "input": {"jurisdictions": ["VG", "ZZZZZ"]},
+      "expected_output": {"error": "ERR_INVALID_JURISDICTION_CODE"},
+      "pass_criteria": "Returns validation error for non-ISO-3166 code"
+    },
+    {
+      "id": "TC-JC-009",
+      "description": "4-jurisdiction comparison — maximum supported",
+      "input": {"jurisdictions": ["VG", "KY", "SG", "HK"], "comparison_dimensions": ["cost", "timeline"]},
+      "expected_output": {"comparison_table_rows": 2, "confidence_level": "HIGH"},
+      "pass_criteria": "Handles 4 jurisdictions correctly without truncation"
+    },
+    {
+      "id": "TC-JC-010",
+      "description": "No dimensions specified — should default to all 7",
+      "input": {"jurisdictions": ["VG", "KY"]},
+      "expected_output": {"comparison_table_rows": 7},
+      "pass_criteria": "Defaults to all 7 comparison dimensions when none specified"
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "skill_id": "doc-draft-engagement-letter",
+  "version": "1.0.0",
+  "baseline_score": null,
+  "current_score": null,
+  "last_run_date": null,
+  "minimum_pass_rate": 0.90,
+  "failure_log": [],
+  "test_cases": [
+    {
+      "id": "TC-EL-001",
+      "description": "Standard engagement letter — company formation in BVI",
+      "input": {"client_id": "CLT-TEST-001", "service_type": "COMPANY_FORMATION", "mandate_details": {"jurisdiction": "VG", "fee": 5000, "currency": "USD"}},
+      "expected_output": {"format": "DOCX", "missing_fields_count": 0, "requires_human_review": true},
+      "pass_criteria": "Complete draft with all fields populated — no missing placeholders"
+    },
+    {
+      "id": "TC-EL-002",
+      "description": "Missing fee — should flag as missing field",
+      "input": {"client_id": "CLT-TEST-002", "service_type": "ACCOUNTING", "mandate_details": {"jurisdiction": "SG"}},
+      "expected_output": {"missing_fields": ["fee"], "requires_human_review": true},
+      "pass_criteria": "Draft generated with {{fee}} placeholder visible — flagged in missing_fields"
+    },
+    {
+      "id": "TC-EL-003",
+      "description": "Client not found — should return error",
+      "input": {"client_id": "CLT-NONEXISTENT", "service_type": "COMPANY_FORMATION"},
+      "expected_output": {"error": "ERR_CLIENT_NOT_FOUND"},
+      "pass_criteria": "Validation error returned"
+    },
+    {
+      "id": "TC-EL-004",
+      "description": "Template not found for service type — should escalate",
+      "input": {"client_id": "CLT-TEST-001", "service_type": "UNKNOWN_SERVICE_TYPE"},
+      "expected_output": {"error": "ERR_TEMPLATE_NOT_FOUND"},
+      "pass_criteria": "Escalation triggered for missing template"
+    },
+    {
+      "id": "TC-EL-005",
+      "description": "Data sources cited — output must list sources used",
+      "input": {"client_id": "CLT-TEST-001", "service_type": "REGISTERED_AGENT", "mandate_details": {"jurisdiction": "KY"}},
+      "expected_output": {"data_sources_used_min": 1},
+      "pass_criteria": "data_sources_used is non-empty"
+    },
+    {
+      "id": "TC-EL-006",
+      "description": "Client with multiple entities — must use correct entity for the jurisdiction",
+      "input": {"client_id": "CLT-MULTI-ENTITY", "service_type": "COMPANY_FORMATION", "mandate_details": {"jurisdiction": "SG"}},
+      "expected_output": {"draft_contains_sg_entity": true},
+      "pass_criteria": "Draft uses the Singapore entity name — not the BVI entity"
+    }
+  ]
+}

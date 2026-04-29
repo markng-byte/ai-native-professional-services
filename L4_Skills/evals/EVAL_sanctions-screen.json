@@ -1,0 +1,81 @@
+{
+  "skill_id": "sanctions-screen",
+  "version": "1.0.0",
+  "baseline_score": null,
+  "current_score": null,
+  "last_run_date": null,
+  "minimum_pass_rate": 1.0,
+  "failure_log": [],
+  "test_cases": [
+    {
+      "id": "TC-SS-001",
+      "description": "Known sanctions match — OFAC SDN list individual",
+      "input": {"screen_type": "INDIVIDUAL", "subject": {"full_name": "TEST_SANCTIONED_PERSON_001", "date_of_birth": "1970-01-15"}},
+      "expected_output": {"screen_result": "MATCH", "requires_human_review": true},
+      "pass_criteria": "MUST return MATCH — zero tolerance for missed sanctions hit"
+    },
+    {
+      "id": "TC-SS-002",
+      "description": "Clean individual — no matches expected",
+      "input": {"screen_type": "INDIVIDUAL", "subject": {"full_name": "John Average Smith", "date_of_birth": "1985-06-20", "nationality": "GB"}},
+      "expected_output": {"screen_result": "PASS"},
+      "pass_criteria": "Returns PASS with empty matches array"
+    },
+    {
+      "id": "TC-SS-003",
+      "description": "PEP detection — known politically exposed person",
+      "input": {"screen_type": "INDIVIDUAL", "subject": {"full_name": "TEST_PEP_PERSON_001", "date_of_birth": "1960-03-10", "nationality": "NG"}},
+      "expected_output": {"pep_result": {"is_pep": true}, "requires_human_review": true},
+      "pass_criteria": "PEP flag detected and escalated"
+    },
+    {
+      "id": "TC-SS-004",
+      "description": "Entity screening — sanctioned organisation",
+      "input": {"screen_type": "ENTITY", "subject": {"entity_name": "TEST_SANCTIONED_ENTITY_001", "jurisdiction_of_incorp": "IR"}},
+      "expected_output": {"screen_result": "MATCH", "requires_human_review": true},
+      "pass_criteria": "MUST return MATCH for sanctioned entity"
+    },
+    {
+      "id": "TC-SS-005",
+      "description": "Near-match / potential match — similar name but not exact",
+      "input": {"screen_type": "INDIVIDUAL", "subject": {"full_name": "TEST_NEARMATCH_PERSON_001", "date_of_birth": "1975-09-22"}},
+      "expected_output": {"screen_result": "POTENTIAL_MATCH", "requires_human_review": true},
+      "pass_criteria": "Returns POTENTIAL_MATCH (score 0.6–0.84) — escalated for human review"
+    },
+    {
+      "id": "TC-SS-006",
+      "description": "Name transliteration — Arabic name variant",
+      "input": {"screen_type": "INDIVIDUAL", "subject": {"full_name": "Mohammed Al-Rahman", "date_of_birth": "1968-12-01"}},
+      "expected_output": {"screen_result_not": "ERROR"},
+      "pass_criteria": "Must handle transliterated names without error — return valid PASS/MATCH/POTENTIAL_MATCH"
+    },
+    {
+      "id": "TC-SS-007",
+      "description": "Missing required field — no full_name",
+      "input": {"screen_type": "INDIVIDUAL", "subject": {"date_of_birth": "1990-01-01"}},
+      "expected_output": {"error": "ERR_MISSING_REQUIRED_FIELD"},
+      "pass_criteria": "Returns validation error — full_name is required"
+    },
+    {
+      "id": "TC-SS-008",
+      "description": "Adverse media detection — individual with negative press",
+      "input": {"screen_type": "INDIVIDUAL", "subject": {"full_name": "TEST_ADVERSE_MEDIA_001", "date_of_birth": "1972-07-14"}},
+      "expected_output": {"adverse_media_count_min": 1},
+      "pass_criteria": "adverse_media array contains at least 1 relevant article"
+    },
+    {
+      "id": "TC-SS-009",
+      "description": "Audit log verification — every screen must produce an audit_log_ref",
+      "input": {"screen_type": "INDIVIDUAL", "subject": {"full_name": "Jane Doe", "date_of_birth": "1988-04-30"}},
+      "expected_output": {"audit_log_ref_not_null": true},
+      "pass_criteria": "audit_log_ref is a valid UUID — confirms immutable logging occurred"
+    },
+    {
+      "id": "TC-SS-010",
+      "description": "Common name false positive handling — must not auto-block clean individuals",
+      "input": {"screen_type": "INDIVIDUAL", "subject": {"full_name": "Ahmed Mohamed", "date_of_birth": "1995-02-28", "nationality": "EG"}},
+      "expected_output": {"screen_result_not": "MATCH"},
+      "pass_criteria": "Common name must not produce false MATCH — PASS or POTENTIAL_MATCH acceptable"
+    }
+  ]
+}

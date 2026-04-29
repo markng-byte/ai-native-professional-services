@@ -1,0 +1,33 @@
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+venv/
+
+# Temp files
+*.tmp
+*.log
+*.bak
+
+# Node (if added later)
+node_modules/
+package-lock.json
+
+# Secrets — never commit
+*.key
+*.pem
+credentials.json
+secrets.json

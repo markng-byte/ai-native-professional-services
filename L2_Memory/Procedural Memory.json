@@ -1,0 +1,12 @@
+{
+  "title": "ProceduralMemoryEntry",
+  "type": "object",
+  "required": ["skill_id", "execution_pattern", "success_rate", "common_failures", "last_optimized"],
+  "properties": {
+    "skill_id": { "type": "string", "pattern": "^[a-z-]+$" },
+    "execution_pattern": { "type": "object" },
+    "success_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+    "common_failures": { "type": "array", "items": { "type": "string" } },
+    "last_optimized": { "type": "string", "format": "date-time" }
+  }
+}

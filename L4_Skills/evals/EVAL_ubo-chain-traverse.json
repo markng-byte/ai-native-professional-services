@@ -1,0 +1,81 @@
+{
+  "skill_id": "ubo-chain-traverse",
+  "version": "1.0.0",
+  "baseline_score": null,
+  "current_score": null,
+  "last_run_date": null,
+  "minimum_pass_rate": 0.95,
+  "failure_log": [],
+  "test_cases": [
+    {
+      "id": "TC-UBO-001",
+      "description": "Simple 1-hop — individual directly owns 100% of entity",
+      "input": {"entity_id": "LE-TEST-001", "threshold_pct": 25.0, "max_hops": 5},
+      "expected_output": {"total_ubos_found": 1, "ubo_list": [{"beneficial_pct": 100.0, "path_length": 1}]},
+      "pass_criteria": "Identifies single UBO at 100% with path length 1"
+    },
+    {
+      "id": "TC-UBO-002",
+      "description": "2-hop chain — Individual owns 60% of Entity A, Entity A owns 80% of Entity B",
+      "input": {"entity_id": "LE-TEST-002", "threshold_pct": 25.0, "max_hops": 5},
+      "expected_output": {"total_ubos_found": 1, "ubo_list": [{"beneficial_pct": 48.0, "path_length": 2}]},
+      "pass_criteria": "Correctly computes 60% × 80% = 48% effective ownership"
+    },
+    {
+      "id": "TC-UBO-003",
+      "description": "Multiple UBOs — 3 individuals each owning 33%",
+      "input": {"entity_id": "LE-TEST-003", "threshold_pct": 25.0, "max_hops": 5},
+      "expected_output": {"total_ubos_found": 3},
+      "pass_criteria": "Returns all 3 UBOs with ~33% each"
+    },
+    {
+      "id": "TC-UBO-004",
+      "description": "Below threshold — individual owns 20% (below 25% threshold)",
+      "input": {"entity_id": "LE-TEST-004", "threshold_pct": 25.0, "max_hops": 5},
+      "expected_output": {"total_ubos_found": 0},
+      "pass_criteria": "No UBOs returned — 20% is below the 25% threshold"
+    },
+    {
+      "id": "TC-UBO-005",
+      "description": "Chain exceeds max hops — ownership chain is 6 levels deep",
+      "input": {"entity_id": "LE-TEST-005", "threshold_pct": 25.0, "max_hops": 5},
+      "expected_output": {"chain_exceeded_max_hops": true, "requires_human_review": true},
+      "pass_criteria": "Flags chain_exceeded_max_hops and requires human review"
+    },
+    {
+      "id": "TC-UBO-006",
+      "description": "Unresolved chain — intermediate entity has no inbound OWNS relationship",
+      "input": {"entity_id": "LE-TEST-006", "threshold_pct": 25.0, "max_hops": 5},
+      "expected_output": {"unresolved_chains_not_empty": true, "requires_human_review": true},
+      "pass_criteria": "Flags unresolved chain and requires human review"
+    },
+    {
+      "id": "TC-UBO-007",
+      "description": "UBO with PEP flag — must surface the flag",
+      "input": {"entity_id": "LE-TEST-007", "threshold_pct": 25.0, "max_hops": 5},
+      "expected_output": {"ubo_list": [{"pep_flag": true}], "requires_human_review": true},
+      "pass_criteria": "PEP flag is surfaced in UBO result and triggers human review"
+    },
+    {
+      "id": "TC-UBO-008",
+      "description": "Entity not in graph — should return error",
+      "input": {"entity_id": "LE-NONEXISTENT", "threshold_pct": 25.0, "max_hops": 5},
+      "expected_output": {"error": "ERR_ENTITY_NOT_IN_GRAPH"},
+      "pass_criteria": "Returns validation error — entity does not exist"
+    },
+    {
+      "id": "TC-UBO-009",
+      "description": "Custom threshold — 10% threshold should return more UBOs",
+      "input": {"entity_id": "LE-TEST-009", "threshold_pct": 10.0, "max_hops": 5},
+      "expected_output": {"total_ubos_found_min": 2},
+      "pass_criteria": "Lower threshold surfaces additional UBOs that were below 25%"
+    },
+    {
+      "id": "TC-UBO-010",
+      "description": "Audit log verification — every traversal must produce audit_log_ref",
+      "input": {"entity_id": "LE-TEST-001", "threshold_pct": 25.0, "max_hops": 5},
+      "expected_output": {"audit_log_ref_not_null": true},
+      "pass_criteria": "audit_log_ref is present — confirms immutable logging"
+    }
+  ]
+}

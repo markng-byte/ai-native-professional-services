@@ -1,0 +1,188 @@
+{
+  "skill_id": "client-lookup",
+  "version": "1.0.0",
+  "baseline_score": null,
+  "current_score": null,
+  "last_run_date": null,
+  "minimum_pass_rate": 0.95,
+  "failure_log": [],
+  "test_cases": [
+    {
+      "id": "TC-CL-001",
+      "description": "Exact match by client ID",
+      "input": {
+        "session_id": "test-session-cl-001",
+        "lookup_query": "CLT-001234",
+        "client_id": "CLT-001234",
+        "lookup_mode": "EXACT_ID"
+      },
+      "expected_output": {
+        "match_type": "EXACT",
+        "lookup_confidence_min": 1.0
+      },
+      "pass_criteria": "match_type == EXACT and returned client_id matches input"
+    },
+    {
+      "id": "TC-CL-002",
+      "description": "Fuzzy name match — full legal name",
+      "input": {
+        "session_id": "test-session-cl-002",
+        "lookup_query": "Acme Global Holdings Limited",
+        "client_id": null,
+        "lookup_mode": "FUZZY_NAME"
+      },
+      "expected_output": {
+        "match_type": "EXACT",
+        "lookup_confidence_min": 0.95
+      },
+      "pass_criteria": "Returns correct client_id with confidence >= 0.95"
+    },
+    {
+      "id": "TC-CL-003",
+      "description": "Fuzzy name match — trade name only (not full legal name)",
+      "input": {
+        "session_id": "test-session-cl-003",
+        "lookup_query": "Acme Global",
+        "client_id": null,
+        "lookup_mode": "FUZZY_NAME"
+      },
+      "expected_output": {
+        "match_type": "FUZZY",
+        "lookup_confidence_min": 0.8
+      },
+      "pass_criteria": "Returns correct client even via trade name — confidence >= 0.8"
+    },
+    {
+      "id": "TC-CL-004",
+      "description": "Multiple candidates — common name with ambiguous matches",
+      "input": {
+        "session_id": "test-session-cl-004",
+        "lookup_query": "Asia Pacific Holdings",
+        "client_id": null,
+        "lookup_mode": "FUZZY_NAME"
+      },
+      "expected_output": {
+        "match_type": "MULTIPLE_CANDIDATES"
+      },
+      "pass_criteria": "match_type == MULTIPLE_CANDIDATES and all candidates returned — session paused for human disambiguation"
+    },
+    {
+      "id": "TC-CL-005",
+      "description": "Client not found — completely unknown entity",
+      "input": {
+        "session_id": "test-session-cl-005",
+        "lookup_query": "XYZ Nonexistent Corp 99999",
+        "client_id": null,
+        "lookup_mode": "FUZZY_NAME"
+      },
+      "expected_output": {
+        "match_type": "NOT_FOUND"
+      },
+      "pass_criteria": "match_type == NOT_FOUND — session pauses and prompts user for more information"
+    },
+    {
+      "id": "TC-CL-006",
+      "description": "Client with open compliance flags — flags must be surfaced in output",
+      "input": {
+        "session_id": "test-session-cl-006",
+        "lookup_query": "CLT-005567",
+        "client_id": "CLT-005567",
+        "lookup_mode": "EXACT_ID"
+      },
+      "expected_output": {
+        "match_type": "EXACT",
+        "open_compliance_flags_not_empty": true
+      },
+      "pass_criteria": "open_compliance_flags array must contain at least one entry"
+    },
+    {
+      "id": "TC-CL-007",
+      "description": "Active mandates returned with renewal dates",
+      "input": {
+        "session_id": "test-session-cl-007",
+        "lookup_query": "CLT-002891",
+        "client_id": "CLT-002891",
+        "lookup_mode": "EXACT_ID"
+      },
+      "expected_output": {
+        "active_mandates_count_min": 1
+      },
+      "pass_criteria": "active_mandates contains at least 1 entry with mandate_id, service_type, status, and renewal_date"
+    },
+    {
+      "id": "TC-CL-008",
+      "description": "Degraded mode — GraphRAG unavailable, CRM data only",
+      "input": {
+        "session_id": "test-session-cl-008",
+        "lookup_query": "CLT-001234",
+        "client_id": "CLT-001234",
+        "lookup_mode": "EXACT_ID",
+        "_test_override": "GRAPHRAG_UNAVAILABLE"
+      },
+      "expected_output": {
+        "match_type": "EXACT",
+        "output_completeness": "PARTIAL"
+      },
+      "pass_criteria": "Returns CRM data flagged as PARTIAL — must not fail silently"
+    },
+    {
+      "id": "TC-CL-009",
+      "description": "Retired/archived client — off-boarded client has no active mandates",
+      "input": {
+        "session_id": "test-session-cl-009",
+        "lookup_query": "CLT-000099",
+        "client_id": "CLT-000099",
+        "lookup_mode": "EXACT_ID"
+      },
+      "expected_output": {
+        "match_type": "EXACT",
+        "active_mandates_count": 0
+      },
+      "pass_criteria": "active_mandates is empty and client status is INACTIVE or ARCHIVED"
+    },
+    {
+      "id": "TC-CL-010",
+      "description": "Entity number lookup — company registration number as query",
+      "input": {
+        "session_id": "test-session-cl-010",
+        "lookup_query": "BVI-202300456",
+        "client_id": null,
+        "lookup_mode": "ENTITY_NUMBER"
+      },
+      "expected_output": {
+        "match_type": "EXACT"
+      },
+      "pass_criteria": "Resolves registered entity number to the correct client_id via GraphRAG"
+    },
+    {
+      "id": "TC-CL-011",
+      "description": "Episodic memory pull — last_interaction_summary must not be null",
+      "input": {
+        "session_id": "test-session-cl-011",
+        "lookup_query": "CLT-007823",
+        "client_id": "CLT-007823",
+        "lookup_mode": "EXACT_ID"
+      },
+      "expected_output": {
+        "match_type": "EXACT",
+        "last_interaction_summary_not_null": true
+      },
+      "pass_criteria": "last_interaction_summary is a non-empty string pulled from Episodic Memory"
+    },
+    {
+      "id": "TC-CL-012",
+      "description": "HIGH risk client — risk_rating must be surfaced to Orchestrator",
+      "input": {
+        "session_id": "test-session-cl-012",
+        "lookup_query": "CLT-009001",
+        "client_id": "CLT-009001",
+        "lookup_mode": "EXACT_ID"
+      },
+      "expected_output": {
+        "match_type": "EXACT",
+        "risk_rating": "HIGH"
+      },
+      "pass_criteria": "risk_rating == HIGH and open_compliance_flags checked — Orchestrator must receive risk signal"
+    }
+  ]
+}

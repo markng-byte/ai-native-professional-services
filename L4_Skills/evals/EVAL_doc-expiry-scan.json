@@ -1,0 +1,67 @@
+{
+  "skill_id": "doc-expiry-scan",
+  "version": "1.0.0",
+  "baseline_score": null,
+  "current_score": null,
+  "last_run_date": null,
+  "minimum_pass_rate": 0.98,
+  "failure_log": [],
+  "test_cases": [
+    {
+      "id": "TC-DE-001",
+      "description": "Standard 30-day scan — should find expiring passports",
+      "input": {"date_threshold_days": 30},
+      "expected_output": {"total_expiring_min": 1},
+      "pass_criteria": "Returns at least 1 expiring document within 30-day window"
+    },
+    {
+      "id": "TC-DE-002",
+      "description": "Already expired documents — should appear with negative days_until_expiry",
+      "input": {"date_threshold_days": 30},
+      "expected_output": {"already_expired_min": 1},
+      "pass_criteria": "already_expired count is at least 1 — expired docs surfaced separately"
+    },
+    {
+      "id": "TC-DE-003",
+      "description": "Filter by doc type — only passports",
+      "input": {"date_threshold_days": 90, "doc_types": ["PASSPORT"]},
+      "expected_output": {"all_results_doc_type": "PASSPORT"},
+      "pass_criteria": "Every result has doc_type == PASSPORT"
+    },
+    {
+      "id": "TC-DE-004",
+      "description": "Filter by jurisdiction — only BVI entities",
+      "input": {"date_threshold_days": 60, "jurisdiction_filter": "VG"},
+      "expected_output": {"all_results_jurisdiction": "VG"},
+      "pass_criteria": "Every result has jurisdiction == VG"
+    },
+    {
+      "id": "TC-DE-005",
+      "description": "No expiring documents — should return empty list",
+      "input": {"date_threshold_days": 1, "doc_types": ["CERT_OF_INCORP"]},
+      "expected_output": {"total_expiring": 0},
+      "pass_criteria": "Returns empty list — no false positives"
+    },
+    {
+      "id": "TC-DE-006",
+      "description": "Documents without expiry date — should be excluded from results",
+      "input": {"date_threshold_days": 30},
+      "expected_output": {"no_null_expiry_dates": true},
+      "pass_criteria": "No document with null expiry_date appears in results"
+    },
+    {
+      "id": "TC-DE-007",
+      "description": "Sort order — most urgent (lowest days_until_expiry) first",
+      "input": {"date_threshold_days": 90},
+      "expected_output": {"sorted_ascending_by_days": true},
+      "pass_criteria": "Results are sorted by days_until_expiry ascending"
+    },
+    {
+      "id": "TC-DE-008",
+      "description": "Assigned officer must be populated for each result",
+      "input": {"date_threshold_days": 60},
+      "expected_output": {"all_have_assigned_officer": true},
+      "pass_criteria": "Every result has a non-null assigned_officer field"
+    }
+  ]
+}

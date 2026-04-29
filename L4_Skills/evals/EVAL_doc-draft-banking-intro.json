@@ -1,0 +1,53 @@
+{
+  "skill_id": "doc-draft-banking-intro",
+  "version": "1.0.0",
+  "baseline_score": null,
+  "current_score": null,
+  "last_run_date": null,
+  "minimum_pass_rate": 0.90,
+  "failure_log": [],
+  "test_cases": [
+    {
+      "id": "TC-BI-001",
+      "description": "Standard banking intro — BVI company to HSBC Singapore",
+      "input": {"client_id": "CLT-TEST-001", "target_bank": "HSBC", "account_type": "CORPORATE"},
+      "expected_output": {"format": "DOCX", "missing_fields_count": 0, "requires_human_review": true},
+      "pass_criteria": "Complete draft — all fields filled, bank requirements included"
+    },
+    {
+      "id": "TC-BI-002",
+      "description": "Bank not in guidelines — should use generic template",
+      "input": {"client_id": "CLT-TEST-001", "target_bank": "UNKNOWN_BANK_XYZ"},
+      "expected_output": {"template_used_contains": "generic"},
+      "pass_criteria": "Falls back to generic template and flags it in output"
+    },
+    {
+      "id": "TC-BI-003",
+      "description": "Historical success rate included when data exists",
+      "input": {"client_id": "CLT-TEST-001", "target_bank": "DBS"},
+      "expected_output": {"historical_success_rate_not_null": true},
+      "pass_criteria": "historical_success_rate is populated from mandate history"
+    },
+    {
+      "id": "TC-BI-004",
+      "description": "Low success rate warning — should add recommendation note",
+      "input": {"client_id": "CLT-HIGH-RISK", "target_bank": "HSBC"},
+      "expected_output": {"historical_success_rate_max": 0.3},
+      "pass_criteria": "Low success rate triggers alternative bank suggestion in output"
+    },
+    {
+      "id": "TC-BI-005",
+      "description": "Client not found — should return error",
+      "input": {"client_id": "CLT-NONEXISTENT", "target_bank": "HSBC"},
+      "expected_output": {"error": "ERR_CLIENT_NOT_FOUND"},
+      "pass_criteria": "Validation error returned"
+    },
+    {
+      "id": "TC-BI-006",
+      "description": "Bank requirements summary must be present in output",
+      "input": {"client_id": "CLT-TEST-001", "target_bank": "BNP Paribas"},
+      "expected_output": {"bank_requirements_summary_not_null": true},
+      "pass_criteria": "bank_requirements_summary is populated from Semantic Memory"
+    }
+  ]
+}

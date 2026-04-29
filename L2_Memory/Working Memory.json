@@ -1,0 +1,12 @@
+{
+  "title": "WorkingMemoryContext",
+  "type": "object",
+  "required": ["job_id", "session_id", "current_step", "tool_outputs", "conversation_turns"],
+  "properties": {
+    "job_id": { "type": "string", "pattern": "^job-[a-f0-9]{12}$" },
+    "session_id": { "type": "string" },
+    "current_step": { "type": "integer" },
+    "tool_outputs": { "type": "object", "additionalProperties": true },
+    "conversation_turns": { "type": "array", "maxItems": 20, "items": { "type": "object" } }
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "skill_id": "conflict-check",
+  "version": "1.0.0",
+  "baseline_score": null,
+  "current_score": null,
+  "last_run_date": null,
+  "minimum_pass_rate": 0.95,
+  "failure_log": [],
+  "test_cases": [
+    {
+      "id": "TC-CC-001",
+      "description": "No conflicts — completely new individuals with no existing graph presence",
+      "input": {"new_client_profile": {"entity_name": "Test NewCo Ltd", "jurisdiction": "VG", "directors": [{"full_name": "Unique Test Person 001"}], "ubos": [{"full_name": "Unique Test Person 001"}]}},
+      "expected_output": {"conflict_found": false, "recommendation": "PROCEED"},
+      "pass_criteria": "No conflicts detected — recommendation is PROCEED"
+    },
+    {
+      "id": "TC-CC-002",
+      "description": "Directorship overlap — director of new client is already director of existing client",
+      "input": {"new_client_profile": {"entity_name": "Test Overlap Ltd", "jurisdiction": "SG", "directors": [{"full_name": "TEST_EXISTING_DIRECTOR_001", "individual_id": "IND-TEST-001"}]}},
+      "expected_output": {"conflict_found": true, "conflicts": [{"conflict_type": "DIRECTORSHIP_OVERLAP"}]},
+      "pass_criteria": "Detects directorship overlap and flags conflict"
+    },
+    {
+      "id": "TC-CC-003",
+      "description": "UBO overlap — UBO of new client is UBO of existing client",
+      "input": {"new_client_profile": {"entity_name": "Test UBO Overlap Ltd", "jurisdiction": "KY", "ubos": [{"full_name": "TEST_EXISTING_UBO_001", "individual_id": "IND-TEST-002"}]}},
+      "expected_output": {"conflict_found": true, "conflicts": [{"conflict_type": "UBO_OVERLAP"}]},
+      "pass_criteria": "Detects UBO overlap"
+    },
+    {
+      "id": "TC-CC-004",
+      "description": "Prior conflict flag — individual has CONFLICTS_WITH edge in graph",
+      "input": {"new_client_profile": {"entity_name": "Test Prior Conflict Ltd", "jurisdiction": "HK", "directors": [{"individual_id": "IND-TEST-003"}]}},
+      "expected_output": {"conflict_found": true, "conflicts": [{"conflict_type": "PRIOR_CONFLICT_FLAG"}], "recommendation": "BLOCK"},
+      "pass_criteria": "Detects pre-existing conflict flag — recommendation is BLOCK"
+    },
+    {
+      "id": "TC-CC-005",
+      "description": "Fuzzy name match — name variant matches existing individual",
+      "input": {"new_client_profile": {"entity_name": "Test Fuzzy Ltd", "jurisdiction": "VG", "directors": [{"full_name": "Robert J. Smith"}]}},
+      "expected_output": {"conflict_found_possible": true},
+      "pass_criteria": "Fuzzy match against 'Robert James Smith' is detected and flagged"
+    },
+    {
+      "id": "TC-CC-006",
+      "description": "Multiple conflicts — director overlaps with 2 different existing clients",
+      "input": {"new_client_profile": {"entity_name": "Test Multi Ltd", "jurisdiction": "SG", "directors": [{"individual_id": "IND-TEST-MULTI"}]}},
+      "expected_output": {"conflict_found": true, "total_conflicts_min": 2},
+      "pass_criteria": "Returns all conflicts — not just the first one found"
+    },
+    {
+      "id": "TC-CC-007",
+      "description": "No directors or UBOs provided — should reject",
+      "input": {"new_client_profile": {"entity_name": "Test Empty Ltd", "jurisdiction": "VG", "directors": [], "ubos": []}},
+      "expected_output": {"error": "ERR_NO_INDIVIDUALS_TO_CHECK"},
+      "pass_criteria": "Validation error — at least one director or UBO required"
+    },
+    {
+      "id": "TC-CC-008",
+      "description": "Audit log verification — every check must produce audit_log_ref",
+      "input": {"new_client_profile": {"entity_name": "Test Audit Ltd", "jurisdiction": "VG", "directors": [{"full_name": "Audit Test Person"}]}},
+      "expected_output": {"audit_log_ref_not_null": true, "requires_human_review": true},
+      "pass_criteria": "audit_log_ref present and requires_human_review is always true"
+    }
+  ]
+}

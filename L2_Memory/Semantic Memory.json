@@ -1,0 +1,13 @@
+{
+  "title": "SemanticMemoryEntry",
+  "type": "object",
+  "required": ["doc_id", "doc_type", "jurisdiction_scope", "effective_date", "content_chunks", "last_updated"],
+  "properties": {
+    "doc_id": { "type": "string", "pattern": "^sem-[a-z0-9-]+$" },
+    "doc_type": { "type": "string", "enum": ["sop", "regulation", "procedure", "product_catalog", "fee_schedule"] },
+    "jurisdiction_scope": { "type": "array", "items": { "type": "string" } },
+    "effective_date": { "type": "string", "format": "date" },
+    "content_chunks": { "type": "array", "items": { "type": "object" } },
+    "last_updated": { "type": "string", "format": "date-time" }
+  }
+}
