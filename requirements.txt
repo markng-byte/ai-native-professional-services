@@ -1,0 +1,5 @@
+crewai[tools]>=0.28.8
+langchain-anthropic>=0.1.4
+py2neo>=2021.2.3
+python-dotenv>=1.0.1
+streamlit>=1.33.0
