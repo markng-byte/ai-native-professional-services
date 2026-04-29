@@ -60,7 +60,10 @@ This repository contains the **full technical blueprint** for transforming a tra
 ├── L5_Agents/                        # Named agents with defined roles and permissions
 │   ├── AGENT_SPEC_Orchestrator.md    #   Central router — classifies intent, dispatches to specialists
 │   ├── AGENT_SPEC_Research.md        #   Jurisdiction comparisons, regulatory lookups
-│   └── AGENT_SPEC_Compliance.md      #   UBO traversal, sanctions screening, conflict checks
+│   ├── AGENT_SPEC_Compliance.md      #   UBO traversal, sanctions screening, conflict checks
+│   ├── AGENT_SPEC_Drafting.md        #   Engagement letters, banking intros
+│   ├── AGENT_SPEC_Operations.md      #   Internal alerts, CRM sync
+│   └── AGENT_SPEC_ExecutiveAssistant.md # Command Center for human executive
 │
 ├── L6_Interaction/                   # UX specs per channel (TODO)
 │
@@ -106,6 +109,7 @@ This repository contains the **full technical blueprint** for transforming a tra
 | **Compliance Agent** | HIGH | `ubo-chain-traverse`, `sanctions-screen`, `conflict-check`, `doc-expiry-scan` |
 | **Drafting Agent** | MEDIUM-HIGH | `doc-draft-engagement`, `doc-draft-banking-intro`, `structure-chart-gen` |
 | **Operations Agent** | MEDIUM | `mandate-renewal-alert`, `deadline-tracker`, `report-assembly` |
+| **Executive Assistant** | HIGH | Acts as the Command Center, orchestrates all sub-agents, synthesizes exec briefs, manages meetings |
 
 ---
 

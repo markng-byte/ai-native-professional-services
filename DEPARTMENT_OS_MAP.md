@@ -17,8 +17,8 @@
 | Metric | Count |
 |---|---|
 | Total Layers | 6 + Cross-cutting |
-| Total Documents | 30+ |
-| Agents Defined | 5 |
+| Total Documents | 31+ |
+| Agents Defined | 6 |
 | Skills Defined | 14 |
 | Workflows Defined | 1 |
 | Eval Suites | 9 |
@@ -103,8 +103,9 @@
 | Compliance Agent | HIGH | `ubo-chain-traverse`, `sanctions-screen`, `conflict-check`, `doc-expiry-scan` | DRAFT |
 | Drafting Agent | MEDIUM-HIGH | `doc-draft-engagement-letter`, `doc-draft-banking-intro`, `structure-chart-gen` | DRAFT |
 | Operations Agent | MEDIUM | `mandate-renewal-alert`, `deadline-tracker`, `report-assembly` | DRAFT |
+| Executive Assistant | HIGH | `exec-brief`, `meeting-capture`, `drive-sync` | DRAFT |
 
-**Open Gaps**: None — all 5 agents are specified.
+**Open Gaps**: None — all 6 agents are specified.
 
 ---
 
@@ -136,6 +137,7 @@
 | Compliance Agent | Write (flags) | Read (deep) | — | — | Read | — | Read |
 | Drafting Agent | Read | Read | Read/Write | — | — | — | — |
 | Operations Agent | Read/Write | Read | Read/Write | — | — | Read/Draft | — |
+| Executive Assistant | — | — | Read/Write | Execute | — | Read/Write | — |
 
 ---
 
@@ -162,8 +164,9 @@
 | 17 | UX_SPEC — internal chat channel | L6 | Phase 4 | ✅ DRAFT |
 | 18 | GOVERNANCE.md | Cross | Phase 4 | ✅ DRAFT |
 | 19 | DEPARTMENT_OS_MAP.md | Cross | Phase 4 | ✅ DRAFT |
+| 20 | AGENT_SPEC — Executive Assistant | L5 | Phase 4 | ✅ DRAFT |
 
-**All 19 deliverables: COMPLETE (DRAFT status).**
+**All 20 deliverables: COMPLETE (DRAFT status).**
 
 ---
 
