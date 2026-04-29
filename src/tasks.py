@@ -1,6 +1,25 @@
 from crewai import Task
 
 class ProfessionalServicesTasks:
+    def executive_synthesis_task(self, agent, user_request):
+        """
+        Task for the Executive Assistant to process the final output for the executive.
+        """
+        return Task(
+            description=(
+                f"Process the executive's request: '{user_request}'.\n"
+                f"You must delegate to the appropriate specialist agents (like Research or Compliance) "
+                f"to gather the necessary data. Once you receive their outputs, synthesize them into "
+                f"a high-level, structured Executive Brief. Use tables, bullet points, and clear action items."
+            ),
+            expected_output=(
+                "A clean, professional Executive Brief in Markdown format. It MUST include "
+                "a status indicator (✅ Done, ⏳ In progress, or ❓ Need input), a summary, "
+                "and structured data from the sub-agents."
+            ),
+            agent=agent
+        )
+
     def intake_classification_task(self, agent, user_request):
         """
         L4 Skill: intent-classifier

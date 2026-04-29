@@ -7,6 +7,26 @@ from langchain_anthropic import ChatAnthropic
 llm = ChatAnthropic(model_name="claude-3-opus-20240229")
 
 class ProfessionalServicesAgents:
+    def executive_assistant_agent(self):
+        """
+        L5/L6 Executive Assistant (Command Center): Translates executive intent
+        and synthesizes outputs from sub-agents.
+        """
+        return Agent(
+            role='Senior Executive Assistant',
+            goal='Act as the Command Center for Mark Ng, translating high-level executive requests into orchestrated tasks and synthesizing complex data into structured briefs.',
+            backstory=(
+                "You are the Senior Executive Assistant and Command Center for Mark Ng at OneIBC. "
+                "You sit at the top of an AI-Native architecture. You do not perform raw data entry "
+                "or compliance checks yourself; instead, you command specialist agents "
+                "(Orchestrator, Research, Compliance) to do the heavy lifting, and you synthesize their outputs. "
+                "You always produce structured outputs, using tables over prose when appropriate."
+            ),
+            allow_delegation=True,
+            verbose=True,
+            llm=llm
+        )
+
     def orchestrator_agent(self):
         """
         L5 Orchestrator Agent: Central router/planner that classifies intents
