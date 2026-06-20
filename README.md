@@ -12,6 +12,24 @@ This repository contains the **full technical blueprint** for transforming a tra
 
 ---
 
+## Command Center UI (L6 Interaction Surface)
+
+A polished Streamlit interface that makes the whole system legible at a glance:
+
+- **Capability gallery** — see exactly what the system can do (jurisdiction comparison, sanctions/KYC, UBO chains, drafting, renewals, onboarding briefs) and load an example with one click.
+- **Live agent roster** — watch each agent's status update in real time (`idle → queued → thinking → working → done`).
+- **Streaming pipeline** — every request is streamed step-by-step through the Orchestrator → specialist → Executive Assistant flow.
+- **Activity log** — a persistent, timestamped history of everything that happened.
+
+```bash
+pip install -r requirements.txt
+streamlit run src/app.py
+```
+
+It runs **out-of-the-box with no API key** (deterministic simulation engine in `src/engine.py`). Set `ANTHROPIC_API_KEY` and flip the **⚡ Live AI synthesis** toggle to stream the Executive Assistant's brief from a real Claude model.
+
+---
+
 ## Architecture Layers
 
 ```
