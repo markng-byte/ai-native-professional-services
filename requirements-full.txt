@@ -1,6 +1,11 @@
-# Full backend stack (for running live CrewAI agents)
+# Full backend stack (CrewAI agents + Neo4j production graph)
 crewai[tools]>=0.28.8
 langchain-anthropic>=0.1.4
+anthropic>=0.25.0
 py2neo>=2021.2.3
+neo4j>=5.0.0
+networkx>=3.0
 python-dotenv>=1.0.1
 streamlit>=1.33.0
+# Optional ingestion adapters
+# simple-salesforce>=1.12.0

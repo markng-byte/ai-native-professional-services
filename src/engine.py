@@ -13,6 +13,18 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional
 
+# GraphRAG engine — when available, Research / UBO / Operations stages run real
+# graph queries (NetworkX dev backend + seed data, or Neo4j in production)
+# instead of static simulation. Imported lazily so the UI still runs if the
+# graph package or networkx is missing.
+try:
+    from graph.engine import get_engine as _get_graph_engine
+    from graph import render as _graph_render
+    _GRAPH = _get_graph_engine()
+except Exception:  # pragma: no cover - defensive fallback
+    _GRAPH = None
+    _graph_render = None
+
 # ---------------------------------------------------------------------------
 # Agent roster
 # ---------------------------------------------------------------------------
@@ -183,16 +195,33 @@ def extract_jurisdictions(prompt: str) -> List[tuple]:
     return found
 
 
+# Leading command/stopwords that look capitalised but aren't entity names.
+_ENTITY_STOPWORDS = {
+    "Map", "Show", "Compare", "Draft", "Screen", "Run", "Find", "Trace",
+    "Prepare", "Check", "Generate", "List", "Get", "The", "A", "An",
+    "UBO", "KYC", "AML", "PEP", "BVI", "Cayman", "Singapore", "I",
+}
+
 def extract_entity(prompt: str) -> str:
-    m = re.search(r'[""\'](.*?)[""\'s]', prompt)
+    # quoted name wins
+    m = re.search(r'[""\'](.*?)[""\']', prompt)
     if m and len(m.group(1)) > 3:
         return m.group(1).strip()
-    m = re.search(
-        r"([A-Z][A-Za-z&]+(?:\s+[A-Z][A-Za-z&]+){0,4}"
-        r"(?:\s+(?:Ltd|Limited|LLC|Inc|Group|Holdings|Corp|PLC|Pte))?)",
+    # collect all capitalised word-sequences, then strip leading stopwords
+    candidates = re.findall(
+        r"[A-Z][A-Za-z&]+(?:\s+[A-Z][A-Za-z&]+){0,4}"
+        r"(?:\s+(?:Ltd|Limited|LLC|Inc|Group|Holdings|Corp|PLC|Pte))?",
         prompt,
     )
-    return m.group(1).strip() if m and len(m.group(1)) > 3 else "the subject entity"
+    best = ""
+    for cand in candidates:
+        words = [w for w in cand.split()]
+        while words and words[0] in _ENTITY_STOPWORDS:
+            words.pop(0)
+        cleaned = " ".join(words)
+        if len(cleaned) > len(best):
+            best = cleaned
+    return best if len(best) > 3 else "the subject entity"
 
 # ---------------------------------------------------------------------------
 # Stage model
@@ -408,6 +437,35 @@ def _user_prompt_ea(prompt: str, specialist_output: str) -> str:
             f"Specialist findings:\n{specialist_output or '(none yet)'}")
 
 # ---------------------------------------------------------------------------
+# Graph-backed bodies (real query when graph available, else simulation)
+# ---------------------------------------------------------------------------
+
+def _research_body(prompt: str) -> str:
+    if _GRAPH and _graph_render:
+        js = extract_jurisdictions(prompt)
+        codes = [c for c, _ in js] or ["VG", "KY", "SG"]
+        md = _graph_render.jurisdiction_compare(_GRAPH, codes)
+        if md:
+            return md
+    return _sim_research(prompt)
+
+def _ubo_body(prompt: str) -> str:
+    if _GRAPH and _graph_render:
+        name = extract_entity(prompt)
+        md = _graph_render.ubo_chain(_GRAPH, name)
+        if md:
+            return md
+    return _sim_ubo(prompt)
+
+def _operations_body(prompt: str) -> str:
+    if _GRAPH and _graph_render:
+        md = _graph_render.mandates(_GRAPH, 90)
+        if md:
+            return md
+    return _sim_operations()
+
+
+# ---------------------------------------------------------------------------
 # Pipeline builder
 # ---------------------------------------------------------------------------
 
@@ -436,12 +494,12 @@ def build_pipeline(prompt: str) -> List[Stage]:
     if intent.target_agent == "research":
         stages.append(Stage("research", "Compare jurisdictions",
                             "Querying GraphRAG knowledge graph…",
-                            _sim_research(prompt), _SYS_RESEARCH))
+                            _research_body(prompt), _SYS_RESEARCH))
     elif intent.target_agent == "compliance":
         if any(k in p for k in ("ubo", "beneficial owner", "ownership", "conflict")):
             stages.append(Stage("compliance", "Traverse ownership chain",
                                 "Walking ownership graph for UBOs…",
-                                _sim_ubo(prompt), _SYS_UBO))
+                                _ubo_body(prompt), _SYS_UBO))
         else:
             stages.append(Stage("compliance", "Run sanctions / KYC screen",
                                 "Calling sanctions, PEP and adverse-media sources…",
@@ -453,7 +511,7 @@ def build_pipeline(prompt: str) -> List[Stage]:
     elif intent.target_agent == "operations":
         stages.append(Stage("operations", "Scan obligations",
                             "Scanning client book for deadlines…",
-                            _sim_operations(), _SYS_OPERATIONS))
+                            _operations_body(prompt), _SYS_OPERATIONS))
 
     # Multi-agent: onboarding adds compliance pre-check
     if any(k in p for k in ("onboard", "brief")) and intent.target_agent == "research":
