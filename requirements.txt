@@ -1,3 +1,4 @@
 streamlit>=1.33.0
 python-dotenv>=1.0.1
+anthropic>=0.25.0
 langchain-anthropic>=0.1.4
