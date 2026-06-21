@@ -255,6 +255,29 @@ def jurisdiction_compare(req: JurisdictionCompareRequest):
     return _ok("research", data)
 
 
+class RiskProjectionRequest(BaseModel):
+    domain: str                              # e.g. "CBDC", "Stablecoin"
+    jurisdictions: List[str] = ["VN", "SG", "TH", "MY", "ID", "PH"]
+
+
+@app.post("/api/research/risk-projection")
+def risk_projection(req: RiskProjectionRequest):
+    """REGO: per-jurisdiction current vs projected risk scores for a domain (chart data)."""
+    juris = ", ".join(req.jurisdictions)
+    prompt = (
+        f"For regulatory domain \"{req.domain}\", give current vs projected (12-month) "
+        f"regulatory-risk scores (0-100) for jurisdictions: {juris}.\n"
+        f"Return ONLY a JSON array: "
+        f"[{{\"j\": \"VN\", \"current\": 70, \"projected\": 85}}, ...]. "
+        f"Adjust numbers to reflect domain reality."
+    )
+    raw = _call_claude(SYSTEM_RESEARCH, prompt, max_tokens=800)
+    data = _parse_json_response(raw)
+    if not isinstance(data, list):
+        data = []
+    return _ok("research", data)
+
+
 # ---------------------------------------------------------------------------
 # REGO / Drafting — Advocacy Brief
 # ---------------------------------------------------------------------------
