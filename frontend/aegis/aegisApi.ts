@@ -190,6 +190,25 @@ export const fmt = {
       .filter(Boolean)
       .join("\n\n");
   },
+  localIntel(d: any): string {
+    if (!d || d._parse_error) return "⚠ Không phân tích được.";
+    const risk = d.risk_level ? `[${d.risk_level}] ` : "";
+    const instruments = (d.key_instruments || [])
+      .map((k: any) => `• ${k.name} (${k.status}, ${k.impact}) — ${k.note}`)
+      .join("\n");
+    const flags = (d.compliance_flags || [])
+      .map((f: any) => `⚠ [${f.severity}] ${f.flag}`)
+      .join("\n");
+    const actions = (d.recommended_actions || []).map((a: string) => `▸ ${a}`).join("\n");
+    return [
+      `${risk}${d.regulatory_summary || ""}`,
+      instruments && `Văn bản chính:\n${instruments}`,
+      flags && `Cờ tuân thủ:\n${flags}`,
+      actions && `Khuyến nghị:\n${actions}`,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+  },
   advocacyBrief(d: any): string {
     if (!d || d._parse_error) return "Error.";
     const tp = (d.talking_points || []).map((p: string) => `• ${p}`).join("\n");
