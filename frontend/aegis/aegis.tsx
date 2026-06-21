@@ -558,7 +558,8 @@ export default function Aegis() {
   useApiBridgeCheck()
   const isMobile = useIsMobile()
   const userProfile = useAegisStore(s => s.userProfile)
-  const [mappingDone, setMappingDone] = useState(false)
+  const feedInitialized = useAegisStore(s => s.feedInitialized)
+  const setFeedInitialized = useAegisStore(s => s.setFeedInitialized)
 
   // Not logged in → Login screen
   if (!userProfile) {
@@ -580,12 +581,12 @@ export default function Aegis() {
     )
   }
 
-  // Just finished onboarding → mapping loader (once per session)
-  if (!mappingDone) {
+  // Just finished onboarding → mapping loader (once ever, persisted)
+  if (!feedInitialized) {
     return (
       <>
         <GlobalStyles />
-        <ProfileMappingLoader onDone={() => setMappingDone(true)} />
+        <ProfileMappingLoader onDone={() => setFeedInitialized(true)} />
       </>
     )
   }

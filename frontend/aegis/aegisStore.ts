@@ -91,6 +91,8 @@ interface AegisState {
   userProfile: UserProfile | null
   setUserProfile: (p: UserProfile) => void
   clearUserProfile: () => void
+  feedInitialized: boolean
+  setFeedInitialized: (v: boolean) => void
 
   // Signal Feed
   signals: Signal[]
@@ -144,7 +146,9 @@ export const useAegisStore = create<AegisState>()(
       // User Profile
       userProfile: null,
       setUserProfile: (p) => set({ userProfile: p }),
-      clearUserProfile: () => set({ userProfile: null, signals: [] }),
+      clearUserProfile: () => set({ userProfile: null, signals: [], feedInitialized: false }),
+      feedInitialized: false,
+      setFeedInitialized: (v: boolean) => set({ feedInitialized: v }),
 
       // Signal Feed
       signals: [],
@@ -200,13 +204,14 @@ export const useAegisStore = create<AegisState>()(
       setApiBridgeConnected: (v) => set({ apiBridgeConnected: v }),
     }),
     {
-      name: 'aegis-store',
+      name: 'aegis-store-v2',   // bumped: clears old persisted state
       partialize: (s) => ({
         userProfile: s.userProfile,
         orgProfile: s.orgProfile,
         profileComplete: s.profileComplete,
         sidebarCollapsed: s.sidebarCollapsed,
         activeModule: s.activeModule,
+        feedInitialized: s.feedInitialized,
       }),
     } as Parameters<typeof persist>[1]
   )
