@@ -124,7 +124,9 @@ export const aegisApi = {
     org_context?: string;
   }) => post("/api/compliance/local-intel", b).then((r) => r.data),
 
-  // ── EIT1 (Newsfeed) → Operations / EA
+  // ── EIT1 (Newsfeed) → Operations / EA / Research
+  verifyOrg: (b: { name: string }) =>
+    post("/api/research/verify-org", b).then((r) => r.data),
   ingest: (b: {
     mode: string;
     input: string;

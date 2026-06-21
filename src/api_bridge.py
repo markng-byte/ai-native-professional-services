@@ -434,6 +434,23 @@ def _build_org_ctx(profile: Optional[Dict]) -> str:
     )
 
 
+class VerifyOrgRequest(BaseModel):
+    name: str
+
+
+@app.post("/api/research/verify-org")
+def verify_org(req: VerifyOrgRequest):
+    """EIT1 onboarding: verify/enrich an organisation name (autocomplete)."""
+    prompt = (
+        f"Verify and enrich the organisation: \"{req.name}\".\n"
+        f"Return JSON: {{\"found\": true, \"name\": \"...\", \"type\": \"...\", "
+        f"\"country\": \"...\", \"regulator\": \"...\", \"note\": \"1 short note\"}}"
+    )
+    raw = _call_claude(SYSTEM_RESEARCH, prompt, max_tokens=400)
+    data = _parse_json_response(raw)
+    return _ok("research", data)
+
+
 @app.post("/api/operations/ingest")
 def ingest(req: IngestRequest):
     """EIT1: run full ingestion + synthesis pipeline, return 8 signal cards."""
