@@ -1,73 +1,83 @@
 """
-AEGIS API Bridge — FastAPI thin wrapper over the Firm OS engine.
+AEGIS API Bridge v2 — FastAPI server connecting the 4 AEGIS frontend modules
+to the Firm OS AI backend (L1–L5).
 
-Connects the AEGIS React frontend (L6) to the Firm OS AI backend (L1–L5)
-without modifying any existing engine logic. Each endpoint maps to one or
-more Firm OS agents as specified in AEGIS_PRD_v2 §3.3.
+Architecture (per AEGIS PRD §3.1):
+  React Shell (L6)
+    ↓ fetch / SSE
+  api_bridge.py   ← THIS FILE (no frontend key leaking, no raw prompts from browser)
+    ↓
+  engine.py / agents (L5)
+    ↓
+  Claude API (server-side key) + GraphRAG (L1–L3)
 
 Run:
-    uvicorn src.api_bridge:app --host 0.0.0.0 --port 8000 --reload
+  uvicorn src.api_bridge:app --host 0.0.0.0 --port 8000 --reload
 
-CORS is open to localhost:5173 (Vite dev) and localhost:4173 (Vite preview).
+Modules served:
+  REGO  (Macro Radar)      → /api/research/*
+  VRIT  (Local Intel)      → /api/compliance/local-intel
+  EIT1  (Newsfeed)         → /api/operations/*  (incl. SSE pipeline)
+  EIT2  (War Room)         → /api/executive/*
 """
 
 from __future__ import annotations
 
+import asyncio
+import json
+import logging
 import os
 import sys
-import asyncio
-import logging
-from datetime import datetime
+import uuid
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-# ---------------------------------------------------------------------------
-# Path setup so we can import the existing engine from within src/
-# ---------------------------------------------------------------------------
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-import engine as _engine
+import engine as _engine  # noqa: E402
 
 logger = logging.getLogger("aegis.bridge")
 logging.basicConfig(level=logging.INFO)
 
 # ---------------------------------------------------------------------------
-# App
+# App & CORS
 # ---------------------------------------------------------------------------
-
 app = FastAPI(
     title="AEGIS API Bridge",
-    description="Firm OS agent endpoints for the AEGIS React shell",
-    version="1.0.0",
+    description="Firm OS agent endpoints for the AEGIS React shell (all 4 modules)",
+    version="2.0.0",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:4173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=["http://localhost:5173", "http://localhost:4173", "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ---------------------------------------------------------------------------
-# Shared Claude caller (mirrors app.py's _stream_claude, non-streaming)
+# Core Claude caller (server-side, key never leaves backend)
 # ---------------------------------------------------------------------------
+_ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
 
-def _call_claude(system: str, user: str, max_tokens: int = 1500) -> str:
-    api_key = os.getenv("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return f"[SIMULATION] {user[:120]}…"
+
+def _is_live() -> bool:
+    return bool(_ANTHROPIC_KEY)
+
+
+def _call_claude(system: str, user: str, max_tokens: int = 2000) -> str:
+    if not _is_live():
+        return json.dumps({"_simulation": True, "note": "Set ANTHROPIC_API_KEY for live AI"})
     from anthropic import Anthropic
-    client = Anthropic(api_key=api_key)
+    client = Anthropic(api_key=_ANTHROPIC_KEY)
     msg = client.messages.create(
-        model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6"),
+        model=_MODEL,
         max_tokens=max_tokens,
         system=system,
         messages=[{"role": "user", "content": user}],
@@ -75,45 +85,64 @@ def _call_claude(system: str, user: str, max_tokens: int = 1500) -> str:
     return msg.content[0].text
 
 
-def _run_agent_stage(agent_id: str, user_prompt: str, prior: str = "") -> str:
-    """Build pipeline for a single-agent request and call Claude."""
-    pipeline = _engine.build_pipeline(user_prompt)
-    target = next((s for s in pipeline if s.agent == agent_id), None)
-    if target is None:
-        # Fallback: build a minimal direct stage
-        stage_map = {
-            "research":   (_engine._user_prompt_research,    "You are the Research Specialist for AEGIS. Provide accurate, well-sourced regulatory and jurisdiction intelligence."),
-            "compliance": (_engine._user_prompt_compliance,  "You are the Compliance Officer for AEGIS. Run rigorous AML/KYC checks and return structured results."),
-            "drafting":   (_engine._user_prompt_drafting,    "You are the Drafting Agent for AEGIS. Draft professional documents from approved templates."),
-            "operations": (_engine._user_prompt_operations,  "You are the Operations Agent for AEGIS. Surface renewals, deadlines and status reports."),
-            "ea":         (lambda p: _engine._user_prompt_ea(p, prior), "You are the Executive Assistant for AEGIS. Synthesise specialist outputs into structured executive briefs."),
-        }
-        if agent_id not in stage_map:
-            raise ValueError(f"Unknown agent: {agent_id}")
-        prompt_fn, system = stage_map[agent_id]
-        return _call_claude(system, prompt_fn(user_prompt))
-
-    return _call_claude(target.system_prompt, _build_user_msg(target.agent, user_prompt, prior))
+def _parse_json_response(raw: str) -> Any:
+    """Best-effort JSON parse from LLM output."""
+    cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        return {"raw": raw, "_parse_error": True}
 
 
-def _build_user_msg(agent: str, prompt: str, prior: str) -> str:
-    if agent == "research":
-        return _engine._user_prompt_research(prompt)
-    if agent == "compliance":
-        if any(k in prompt.lower() for k in ("ubo", "ownership", "beneficial")):
-            return _engine._user_prompt_ubo(prompt)
-        return _engine._user_prompt_compliance(prompt)
-    if agent == "drafting":
-        return _engine._user_prompt_drafting(prompt)
-    if agent == "operations":
-        return _engine._user_prompt_operations(prompt)
-    if agent == "ea":
-        return _engine._user_prompt_ea(prompt, prior)
-    return _engine._user_prompt_classification(prompt)
+def _meta(agent: str, requires_review: bool = False, sources: Optional[List] = None) -> Dict:
+    return {
+        "agent": agent,
+        "simulation": not _is_live(),
+        "requires_human_review": requires_review,
+        "sources": sources or [],
+        "model": _MODEL,
+        "run_id": str(uuid.uuid4()),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _ok(agent: str, data: Any, *, requires_review: bool = False, sources: Optional[List] = None) -> Dict:
+    return {"data": data, "meta": _meta(agent, requires_review=requires_review, sources=sources)}
+
 
 # ---------------------------------------------------------------------------
-# Request / Response models
+# Health
 # ---------------------------------------------------------------------------
+@app.get("/api/health")
+def health():
+    return {
+        "status": "ok",
+        "live_ai": _is_live(),
+        "model": _MODEL,
+        "graph_rag": _engine._GRAPH is not None,
+        "agents": list(_engine.AGENTS.keys()),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+# ---------------------------------------------------------------------------
+# REGO Module — Macro Radar
+# /api/research/*
+# ---------------------------------------------------------------------------
+
+class SignalImpactRequest(BaseModel):
+    signal: str                              # Signal headline/text
+    jurisdictions: List[str] = ["SG", "VN"]
+    org_context: Optional[str] = None
+
+class WhatIfRequest(BaseModel):
+    signal: str
+    levers: Dict[str, Any] = {}
+    org_context: Optional[str] = None
+
+class StakeholderMapRequest(BaseModel):
+    regulation: str
+    org: str
 
 class RegLookupRequest(BaseModel):
     jurisdiction: str
@@ -125,207 +154,576 @@ class JurisdictionCompareRequest(BaseModel):
     dimensions: Optional[List[str]] = None
     context: Optional[str] = None
 
-class SanctionsScreenRequest(BaseModel):
-    entity_name: str
-    entity_type: Optional[str] = "company"
-    directors: Optional[List[str]] = None
 
-class UBORequest(BaseModel):
-    entity_name: str
-    depth: Optional[int] = 3
+SYSTEM_RESEARCH = (
+    "You are the Research Specialist for AEGIS, an AI-native strategic intelligence platform. "
+    "You specialise in regulatory, jurisdictional, and macro intelligence for Southeast Asia. "
+    "Always respond with valid JSON matching the schema requested. No markdown fences."
+)
 
-class NewsfeedRequest(BaseModel):
+
+@app.post("/api/research/signal-impact")
+def signal_impact(req: SignalImpactRequest):
+    """REGO: impact assessment callout on a single regulatory signal."""
+    juris = ", ".join(req.jurisdictions)
+    prompt = (
+        f"GRC analyst. Assess the institutional impact of the following regulatory signal "
+        f"for organisations operating in {juris}.\n\n"
+        f"Signal: {req.signal}\n"
+        f"Org context: {req.org_context or 'SG/VN fintech'}\n\n"
+        f"Return JSON: {{\"impact_summary\": \"2-3 sentence sharp institutional assessment\", "
+        f"\"risk_level\": \"CRITICAL|HIGH|MEDIUM|LOW\", "
+        f"\"jurisdictions_affected\": [\"...\"], "
+        f"\"recommended_action\": \"Escalate|Act|Monitor|Investigate\", "
+        f"\"sources\": [\"...\"] }}"
+    )
+    raw = _call_claude(SYSTEM_RESEARCH, prompt)
+    data = _parse_json_response(raw)
+    return _ok("research", data)
+
+
+@app.post("/api/research/what-if")
+def what_if_simulation(req: WhatIfRequest):
+    """REGO: What-If Simulation panel — simulate regulatory scenario variance."""
+    levers_str = json.dumps(req.levers) if req.levers else "default levers"
+    prompt = (
+        f"You are a regulatory scenario simulator for a Southeast Asian professional services firm.\n"
+        f"Signal: {req.signal}\n"
+        f"Levers applied: {levers_str}\n"
+        f"Org context: {req.org_context or 'SG/VN fintech'}\n\n"
+        f"Simulate the downstream regulatory and business impact. Return JSON:\n"
+        f"{{\"scenario_name\": \"evocative name\","
+        f"\"headline\": \"1 sentence outcome\","
+        f"\"probability\": 0-100,"
+        f"\"timeline\": \"e.g. Q3 2026\","
+        f"\"impact_areas\": [{{\"area\": \"...\", \"impact\": \"HIGH|MED|LOW\", \"note\": \"...\"}}],"
+        f"\"recommended_posture\": \"Act|Monitor|Hedge|Avoid\","
+        f"\"confidence\": \"Low|Medium|High\"}}"
+    )
+    raw = _call_claude(SYSTEM_RESEARCH, prompt)
+    data = _parse_json_response(raw)
+    return _ok("research", data)
+
+
+@app.post("/api/research/stakeholder-map")
+def stakeholder_map(req: StakeholderMapRequest):
+    """REGO: generate a prioritised stakeholder engagement map for a regulation."""
+    prompt = (
+        f"GR strategist for Southeast Asia. For regulation: \"{req.regulation}\", "
+        f"org: \"{req.org}\", list 5 key stakeholder meetings needed.\n"
+        f"Return ONLY JSON: [{{"
+        f"\"priority\": 1, \"name\": \"\", \"role\": \"\", "
+        f"\"why\": \"1 sentence\", \"when\": \"\", "
+        f"\"approach\": \"1 sentence\", "
+        f"\"urgency\": \"critical|high|medium|low\"}}]"
+    )
+    raw = _call_claude(SYSTEM_RESEARCH, prompt)
+    data = _parse_json_response(raw)
+    return _ok("research", data)
+
+
+@app.post("/api/research/regulatory-lookup")
+def regulatory_lookup(req: RegLookupRequest):
+    """REGO / general: regulatory overview for a jurisdiction + topic."""
+    prompt = (
+        f"Provide a regulatory overview for {req.jurisdiction}"
+        + (f" on topic: {req.topic}" if req.topic else "")
+        + (f". Context: {req.context}" if req.context else "")
+        + f"\n\nReturn JSON: {{\"overview\": \"...\", \"key_regulations\": [\"...\"], "
+          f"\"risk_level\": \"HIGH|MEDIUM|LOW\", \"recent_developments\": [\"...\"], "
+          f"\"sources\": [\"...\"]}}"
+    )
+    raw = _call_claude(SYSTEM_RESEARCH, prompt)
+    data = _parse_json_response(raw)
+    return _ok("research", data)
+
+
+@app.post("/api/research/jurisdiction-compare")
+def jurisdiction_compare(req: JurisdictionCompareRequest):
+    """REGO: Compare multiple jurisdictions across requested dimensions."""
+    juris_str = ", ".join(req.jurisdictions)
+    dims = ", ".join(req.dimensions) if req.dimensions else "cost, tax, substance, banking access, FATF status, timeline"
+    prompt = (
+        f"Compare jurisdictions: {juris_str}.\nDimensions: {dims}.\n"
+        + (f"Context: {req.context}" if req.context else "")
+        + f"\n\nReturn JSON: {{\"comparison_table\": [{{\"dimension\": \"...\", "
+          f"{', '.join(f'\"{j}\": \"...\"' for j in req.jurisdictions)}}}], "
+          f"\"recommendation\": \"...\", \"confidence\": \"Low|Medium|High\"}}"
+    )
+    raw = _call_claude(SYSTEM_RESEARCH, prompt)
+    data = _parse_json_response(raw)
+    return _ok("research", data)
+
+
+# ---------------------------------------------------------------------------
+# REGO / Drafting — Advocacy Brief
+# ---------------------------------------------------------------------------
+
+class AdvocacyBriefRequest(BaseModel):
+    org: str
+    regulation: str
+    stakeholder_name: str
+    stakeholder_role: str
+    why: str
+
+SYSTEM_DRAFTING = (
+    "You are the Drafting Agent for AEGIS. You produce sharp, institutional-quality "
+    "advocacy and engagement documents. Be concise, specific, and action-oriented."
+)
+
+@app.post("/api/drafting/advocacy-brief")
+def advocacy_brief(req: AdvocacyBriefRequest):
+    """REGO: generate advocacy meeting brief for a specific stakeholder."""
+    prompt = (
+        f"Advocacy meeting brief.\n"
+        f"Org: {req.org}\nReg: {req.regulation}\n"
+        f"With: {req.stakeholder_name} ({req.stakeholder_role})\nWhy: {req.why}\n\n"
+        f"Return JSON: {{\"talking_points\": [\"...\", \"...\", \"...\"], "
+        f"\"framing\": \"1 sentence\", "
+        f"\"red_lines\": \"what not to say\", "
+        f"\"follow_up\": \"next action\", "
+        f"\"tone\": \"sharp and institutional\"}}"
+    )
+    raw = _call_claude(SYSTEM_DRAFTING, prompt, max_tokens=1000)
+    data = _parse_json_response(raw)
+    return _ok("drafting", data, requires_review=True)
+
+
+# ---------------------------------------------------------------------------
+# VRIT Module — Local Intel (Vietnam / SEA)
+# /api/compliance/local-intel
+# ---------------------------------------------------------------------------
+
+class LocalIntelRequest(BaseModel):
+    entity: str
+    jurisdiction: str = "VN"
+    topics: Optional[List[str]] = None  # e.g. ["CBDC","fintech","AML"]
+    org_context: Optional[str] = None
+
+SYSTEM_COMPLIANCE = (
+    "You are the Compliance + Research Agent for AEGIS, specialising in Vietnam and SEA "
+    "hyper-local regulatory intelligence. You are rigorous, cite specific instruments, "
+    "and never auto-approve compliance concerns. Return valid JSON only, no markdown."
+)
+
+@app.post("/api/compliance/local-intel")
+def local_intel(req: LocalIntelRequest):
+    """VRIT: hyper-local regulatory intelligence + compliance screening for an entity / topic."""
+    topics_str = ", ".join(req.topics) if req.topics else "general regulatory landscape"
+    prompt = (
+        f"Provide hyper-local regulatory intelligence for {req.jurisdiction}.\n"
+        f"Entity: {req.entity}\nTopics: {topics_str}\n"
+        + (f"Org context: {req.org_context}" if req.org_context else "")
+        + f"\n\nReturn JSON: {{"
+          f"\"regulatory_summary\": \"2-3 sentence overview\","
+          f"\"key_instruments\": [{{\"name\": \"...\", \"status\": \"Active|Draft|Pending\", \"impact\": \"HIGH|MED|LOW\", \"note\": \"...\"}}],"
+          f"\"compliance_flags\": [{{\"flag\": \"...\", \"severity\": \"CRITICAL|HIGH|MEDIUM\", \"requires_review\": true}}],"
+          f"\"risk_level\": \"CRITICAL|HIGH|MEDIUM|LOW\","
+          f"\"recommended_actions\": [\"...\"],"
+          f"\"requires_human_review\": true}}"
+    )
+    raw = _call_claude(SYSTEM_COMPLIANCE, prompt)
+    data = _parse_json_response(raw)
+    requires_review = data.get("requires_human_review", True) if isinstance(data, dict) else True
+    return _ok("compliance", data, requires_review=requires_review)
+
+
+@app.post("/api/compliance/sanctions-screen")
+def sanctions_screen_endpoint(entity: str, directors: Optional[str] = None):
+    """VRIT / general: sanctions + PEP + adverse media screen."""
+    prompt = (
+        f"Screen the following for sanctions, PEP and adverse media: {entity}"
+        + (f". Also screen directors: {directors}." if directors else "")
+        + f"\n\nReturn JSON: {{\"entity\": \"{entity}\","
+          f"\"sanctions_hit\": false, \"pep_hit\": false, \"adverse_media_hit\": false,"
+          f"\"risk_rating\": \"CLEAR|LOW|MEDIUM|HIGH|BLOCKED\","
+          f"\"flags\": [\"...\"], \"requires_human_review\": true,"
+          f"\"summary\": \"1 sentence conclusion\"}}"
+    )
+    raw = _call_claude(SYSTEM_COMPLIANCE, prompt)
+    data = _parse_json_response(raw)
+    requires_review = data.get("requires_human_review", True) if isinstance(data, dict) else True
+    return _ok("compliance", data, requires_review=requires_review)
+
+
+@app.post("/api/compliance/ubo-traverse")
+def ubo_traverse_endpoint(entity: str, depth: int = 3):
+    """VRIT / general: traverse UBO chain and flag conflicts."""
+    prompt = (
+        f"Map the Ultimate Beneficial Owner (UBO) chain for {entity} to depth {depth}. "
+        f"Flag any conflicts of interest.\n\n"
+        f"Return JSON: {{\"entity\": \"{entity}\","
+        f"\"ubo_chain\": [{{\"level\": 1, \"name\": \"...\", \"ownership_pct\": 0, \"flags\": []}}],"
+        f"\"conflicts\": [\"...\"], \"risk_rating\": \"CLEAR|LOW|MEDIUM|HIGH\","
+        f"\"requires_human_review\": true}}"
+    )
+    raw = _call_claude(SYSTEM_COMPLIANCE, prompt)
+    data = _parse_json_response(raw)
+    return _ok("compliance", data, requires_review=True)
+
+
+# ---------------------------------------------------------------------------
+# EIT1 Module — Newsfeed / Intelligence Ingestion Pipeline
+# /api/operations/*
+#
+# Pipeline stages (matches frontend PIPELINE_STAGES):
+#   s1 ingest → s2 categorize → s3 verify → s4 score → s5 synthesize → done
+#
+# Two modes:
+#   POST /api/operations/ingest             → JSON (non-streaming, ~20 cards)
+#   POST /api/operations/ingest/stream      → SSE  (stage-by-stage events)
+# ---------------------------------------------------------------------------
+
+class IngestRequest(BaseModel):
+    mode: str = "keywords"          # keywords | scrape | upload
+    input: str                      # topics / URLs / CSV rows
     org_profile: Optional[Dict[str, Any]] = None
-    limit: Optional[int] = 20
+    decision_mode: str = "manual"   # auto | manual
 
-class ReportAssembleRequest(BaseModel):
-    signal_ids: Optional[List[str]] = None
-    report_type: Optional[str] = "Trend Outlook"
-    context: Optional[str] = None
+class ReportGenerateRequest(BaseModel):
+    report_type: str                # Trend Outlook | Risk Brief | IC Note | Sector Deep Dive
+    signal: Optional[Dict[str, Any]] = None
+    card_title: Optional[str] = None
+    org_profile: Optional[Dict[str, Any]] = None
 
-class ScenarioRequest(BaseModel):
+SYSTEM_OPERATIONS = (
+    "You are the Operations + Intelligence Agent for AEGIS. You ingest, triage, and synthesise "
+    "regulatory and market signals for institutional intelligence teams in Southeast Asia. "
+    "Always return valid JSON matching the requested schema. No markdown fences."
+)
+
+SYSTEM_EA = (
+    "You are the Executive Assistant for AEGIS. You synthesise specialist agent outputs "
+    "into structured executive intelligence products — investment committee notes, "
+    "trend outlooks, risk briefs. Be institutional, precise, and action-oriented. "
+    "Return valid JSON only."
+)
+
+
+def _build_org_ctx(profile: Optional[Dict]) -> str:
+    if not profile:
+        return "Org: AEGIS Client. Sectors: fintech, financial services. Geo: Vietnam, SEA. Risk: Moderate."
+    return (
+        f"Org: {profile.get('name', '?')}. "
+        f"Sectors: {', '.join((profile.get('sectors') or [])[:4])}. "
+        f"Geo: {', '.join((profile.get('geos') or profile.get('geo', ['SEA']))[:3])}. "
+        f"Risk: {profile.get('risk_appetite') or profile.get('risk', 'Moderate')}."
+    )
+
+
+@app.post("/api/operations/ingest")
+def ingest(req: IngestRequest):
+    """EIT1: run full ingestion + synthesis pipeline, return 8 signal cards."""
+    org = _build_org_ctx(req.org_profile)
+    prompt = (
+        f"Topics/Input: \"{req.input}\"\n{org}\n\n"
+        f"Generate 8 realistic 2026 intelligence signals for an institutional newsfeed. "
+        f"Return JSON: [{{\"id\": \"s1\", \"headline\": \"...\", "
+        f"\"source\": \"...\", \"sourceType\": \"wire|gov|blog|social|research\", "
+        f"\"category\": \"MACRO|REGULATORY|GEOPOLITICAL|SECTOR|CREDIT|COMMODITY|TECHNOLOGY|ESG\", "
+        f"\"summary\": \"2-3 sentence synthesis\", \"rawCredibility\": 0-100, "
+        f"\"impactScore\": 0-100, \"suggestedAction\": \"Escalate|Act|Monitor|Investigate\", "
+        f"\"date\": \"e.g. Today 08:14\", \"priority\": \"high|moderate|monitoring\"}}]"
+    )
+    raw = _call_claude(SYSTEM_OPERATIONS, prompt, max_tokens=3000)
+    cards = _parse_json_response(raw)
+    if not isinstance(cards, list):
+        cards = []
+    return _ok("operations", {"cards": cards, "count": len(cards), "decision_mode": req.decision_mode})
+
+
+async def _ingest_sse_generator(req: IngestRequest):
+    """Yield SSE events matching frontend PipelineMonitor stages."""
+    org = _build_org_ctx(req.org_profile)
+
+    def sse(event_type: str, payload: Any) -> str:
+        return f"data: {json.dumps({'type': event_type, **payload})}\n\n"
+
+    yield sse("stage", {"stage": "ingest", "log": "Initializing signal acquisition...", "progress": 0.05})
+    await asyncio.sleep(0.3)
+
+    # Stage 1: ingest
+    ingest_prompt = (
+        f"Topics: \"{req.input}\"\n{org}\n\n"
+        f"Generate 8 intelligence signals. Return JSON array: "
+        f"[{{\"id\": \"s1\", \"headline\": \"...\", \"source\": \"...\", "
+        f"\"sourceType\": \"wire|gov|blog|social|research\", "
+        f"\"category\": \"MACRO|REGULATORY|GEOPOLITICAL|SECTOR|CREDIT|COMMODITY|TECHNOLOGY|ESG\", "
+        f"\"summary\": \"...\", \"rawCredibility\": 85, \"date\": \"Today\"}}]"
+    )
+    raw_items = _call_claude(SYSTEM_OPERATIONS, ingest_prompt, max_tokens=2500)
+    items = _parse_json_response(raw_items)
+    if not isinstance(items, list):
+        items = []
+    yield sse("stage", {"stage": "ingest", "log": f"✓ {len(items)} signals ingested", "progress": 0.25})
+
+    # Stage 2: categorize
+    yield sse("stage", {"stage": "categorize", "log": "Categorising and tagging signals...", "progress": 0.40})
+    for it in items:
+        yield sse("log", {"log": f"  [{it.get('category', '?')}] {str(it.get('headline', ''))[:48]}..."})
+    await asyncio.sleep(0.2)
+
+    # Stage 3: verify + credibility filter
+    yield sse("stage", {"stage": "verify", "log": "Verifying credibility scores...", "progress": 0.55})
+    verified = [it for it in items if (it.get("rawCredibility") or 0) >= 60]
+    yield sse("stage", {"stage": "verify", "log": f"✓ {len(verified)} signals pass credibility gate", "progress": 0.65})
+
+    # Stage 4: score + synthesize
+    yield sse("stage", {"stage": "score", "log": "Running impact scoring + synthesis...", "progress": 0.75})
+    score_prompt = (
+        f"You have {len(verified)} raw signals. For each, add: impactScore (0-100), "
+        f"suggestedAction (Escalate|Act|Monitor|Investigate), priority (high|moderate|monitoring), "
+        f"keyRisks ([...]), synthesis (2 sentence institutional summary).\n"
+        f"Signals: {json.dumps(verified[:8])}\n\n"
+        f"Return the same JSON array with these fields added. No other output."
+    )
+    raw_scored = _call_claude(SYSTEM_OPERATIONS, score_prompt, max_tokens=3000)
+    scored = _parse_json_response(raw_scored)
+    if not isinstance(scored, list):
+        scored = verified  # fallback to unscored if parse fails
+    yield sse("stage", {"stage": "score", "log": f"✓ Scored {len(scored)} cards", "progress": 0.90})
+
+    # Done
+    yield sse("result", {
+        "data": {
+            "cards": scored,
+            "count": len(scored),
+            "decision_mode": req.decision_mode,
+        },
+        "meta": _meta("operations"),
+    })
+    yield sse("done", {"log": f"Pipeline complete — {len(scored)} cards ready", "progress": 1.0})
+
+
+@app.post("/api/operations/ingest/stream")
+async def ingest_stream(req: IngestRequest):
+    """EIT1: SSE streaming pipeline — feeds PipelineMonitor stage-by-stage."""
+    return StreamingResponse(
+        _ingest_sse_generator(req),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.post("/api/operations/report-generate")
+def report_generate(req: ReportGenerateRequest):
+    """EIT1 Reports tab: generate AI analysis for a report card (IC Note, Trend Outlook, etc.)."""
+    org = _build_org_ctx(req.org_profile)
+    signal_ctx = req.signal.get("synthesis", "") if req.signal else ""
+    signal_title = req.signal.get("title", "") if req.signal else (req.card_title or "")
+    prompt = (
+        f"{req.report_type} for investment committee.\n"
+        f"Signal: {signal_title}\nContext: {signal_ctx}\nOrg profile: {org}\n\n"
+        f"Return JSON: {{\"executive_summary\": \"...\", \"outlook\": \"...\", "
+        f"\"investment_implications\": [\"...\"], \"risks\": [\"...\"], "
+        f"\"recommended_posture\": \"Overweight|Neutral|Underweight|Hedge|Avoid\", "
+        f"\"confidence\": \"Low|Medium|High\", \"next_steps\": [\"...\"]}}"
+    )
+    raw = _call_claude(SYSTEM_EA, prompt, max_tokens=1500)
+    data = _parse_json_response(raw)
+    return _ok("ea", data, requires_review=True)
+
+
+@app.post("/api/operations/report-assemble")
+def report_assemble(report_type: str = "Trend Outlook", context: Optional[str] = None):
+    """EIT1 / general: assemble a report from free-form context."""
+    prompt = (
+        f"Assemble a {report_type} report."
+        + (f" Context: {context}" if context else "")
+        + f"\n\nReturn JSON: {{\"title\": \"...\", \"summary\": \"...\", "
+          f"\"sections\": [{{\"heading\": \"...\", \"body\": \"...\"}}], "
+          f"\"recommendations\": [\"...\"], \"confidence\": \"Low|Medium|High\"}}"
+    )
+    raw = _call_claude(SYSTEM_EA, prompt, max_tokens=2000)
+    data = _parse_json_response(raw)
+    return _ok("ea", data, requires_review=True)
+
+
+# ---------------------------------------------------------------------------
+# EIT2 Module — War Room (Financial Scenario Planning)
+# /api/executive/*
+#
+# 4 sequential War Room calls:
+#   1. POST /api/executive/scenarios       → bull/base/bear + plan_summary
+#   2. POST /api/executive/next-steps      → action library (8-10 items)
+#   3. POST /api/executive/simulate        → variance waterfall simulation
+#   4. POST /api/executive/improvements    → gap-close improvement suggestions
+# ---------------------------------------------------------------------------
+
+class ScenariosRequest(BaseModel):
     business_plan: str
-    scenario_type: Optional[str] = "full"  # bull | base | bear | full
-    constraints: Optional[str] = None
+    org_profile: Optional[Dict[str, Any]] = None
+
+class NextStepsRequest(BaseModel):
+    business_plan: str
+    org_profile: Optional[Dict[str, Any]] = None
+
+class SimulateRequest(BaseModel):
+    business_plan: str
+    selected_scenario: str          # bull | base | bear
+    scenario_data: Dict[str, Any]   # the scenario object from /scenarios
+    selected_actions: List[Dict[str, Any]]
+    org_profile: Optional[Dict[str, Any]] = None
+
+class ImprovementsRequest(BaseModel):
+    business_plan: str
+    selected_scenario: str
+    sim_result: Dict[str, Any]      # result from /simulate
+    target_variance: float          # e.g. 90.0 (% plan adherence)
+    conditions: Dict[str, str]      # {capital, pic, timeline}
+    selected_steps: List[str]       # action IDs already selected
+    org_profile: Optional[Dict[str, Any]] = None
 
 class BriefRequest(BaseModel):
     topic: str
     prior_outputs: Optional[str] = None
 
-class EngagementLetterRequest(BaseModel):
-    client_name: str
-    jurisdiction: str
-    service_type: str
-    context: Optional[str] = None
-
-class AgentResponse(BaseModel):
-    agent: str
-    output: str
-    timestamp: str
-    simulation: bool
-
-def _resp(agent: str, output: str) -> AgentResponse:
-    return AgentResponse(
-        agent=agent,
-        output=output,
-        timestamp=datetime.utcnow().isoformat() + "Z",
-        simulation=not bool(os.getenv("ANTHROPIC_API_KEY")),
-    )
-
-# ---------------------------------------------------------------------------
-# Health
-# ---------------------------------------------------------------------------
-
-@app.get("/api/health")
-def health():
-    live = bool(os.getenv("ANTHROPIC_API_KEY"))
-    graph_ok = _engine._GRAPH is not None
-    return {
-        "status": "ok",
-        "live_ai": live,
-        "graph_rag": graph_ok,
-        "agents": list(_engine.AGENTS.keys()),
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-    }
-
-# ---------------------------------------------------------------------------
-# Research endpoints → Research Agent
-# ---------------------------------------------------------------------------
-
-@app.post("/api/research/regulatory-lookup", response_model=AgentResponse)
-def regulatory_lookup(req: RegLookupRequest):
-    prompt = f"Provide a regulatory overview for {req.jurisdiction}"
-    if req.topic:
-        prompt += f" on the topic: {req.topic}"
-    if req.context:
-        prompt += f". Additional context: {req.context}"
-    try:
-        output = _run_agent_stage("research", prompt)
-        return _resp("research", output)
-    except Exception as e:
-        logger.exception("regulatory-lookup error")
-        raise HTTPException(status_code=500, detail=str(e))
+class ScenarioRequest(BaseModel):
+    business_plan: str
+    scenario_type: str = "full"
+    constraints: Optional[str] = None
 
 
-@app.post("/api/research/jurisdiction-compare", response_model=AgentResponse)
-def jurisdiction_compare(req: JurisdictionCompareRequest):
-    juris_str = ", ".join(req.jurisdictions)
-    dims = ", ".join(req.dimensions) if req.dimensions else "cost, tax, substance, banking access, FATF status"
-    prompt = f"Compare {juris_str} across: {dims}."
-    if req.context:
-        prompt += f" Context: {req.context}"
-    try:
-        output = _run_agent_stage("research", prompt)
-        return _resp("research", output)
-    except Exception as e:
-        logger.exception("jurisdiction-compare error")
-        raise HTTPException(status_code=500, detail=str(e))
-
-# ---------------------------------------------------------------------------
-# Compliance endpoints → Compliance Agent
-# ---------------------------------------------------------------------------
-
-@app.post("/api/compliance/sanctions-screen", response_model=AgentResponse)
-def sanctions_screen(req: SanctionsScreenRequest):
-    prompt = f"Screen {req.entity_name} ({req.entity_type}) for sanctions, PEP and adverse media."
-    if req.directors:
-        prompt += f" Also screen directors: {', '.join(req.directors)}."
-    try:
-        output = _run_agent_stage("compliance", prompt)
-        return _resp("compliance", output)
-    except Exception as e:
-        logger.exception("sanctions-screen error")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/compliance/ubo-traverse", response_model=AgentResponse)
-def ubo_traverse(req: UBORequest):
-    prompt = f"Map the UBO chain for {req.entity_name} to depth {req.depth} and flag any conflicts of interest."
-    try:
-        output = _run_agent_stage("compliance", prompt)
-        return _resp("compliance", output)
-    except Exception as e:
-        logger.exception("ubo-traverse error")
-        raise HTTPException(status_code=500, detail=str(e))
-
-# ---------------------------------------------------------------------------
-# Operations endpoints → Operations Agent
-# ---------------------------------------------------------------------------
-
-@app.get("/api/operations/newsfeed")
-def get_newsfeed(limit: int = 20, sector: Optional[str] = None):
-    topic = "regulatory intelligence newsfeed"
-    if sector:
-        topic += f" for sector: {sector}"
-    prompt = f"Generate the latest {topic}. Return up to {limit} signal cards with title, summary, risk level, and source."
-    try:
-        output = _run_agent_stage("operations", prompt)
-        return _resp("operations", output)
-    except Exception as e:
-        logger.exception("newsfeed error")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/operations/report-assemble", response_model=AgentResponse)
-def report_assemble(req: ReportAssembleRequest):
-    prompt = f"Assemble a {req.report_type} report."
-    if req.signal_ids:
-        prompt += f" Based on signals: {', '.join(req.signal_ids)}."
-    if req.context:
-        prompt += f" Context: {req.context}"
-    try:
-        output = _run_agent_stage("operations", prompt)
-        return _resp("operations", output)
-    except Exception as e:
-        logger.exception("report-assemble error")
-        raise HTTPException(status_code=500, detail=str(e))
-
-# ---------------------------------------------------------------------------
-# Executive endpoints → Executive Assistant
-# ---------------------------------------------------------------------------
-
-@app.post("/api/executive/scenario", response_model=AgentResponse)
-def executive_scenario(req: ScenarioRequest):
+@app.post("/api/executive/scenarios")
+def executive_scenarios(req: ScenariosRequest):
+    """EIT2: generate bull/base/bear scenarios from a business plan."""
+    org = _build_org_ctx(req.org_profile)
     prompt = (
-        f"Run a {req.scenario_type} financial scenario analysis for the following business plan:\n\n"
-        f"{req.business_plan}"
+        f"Business Plan:\n{req.business_plan}\n\n{org}\n\n"
+        f"Generate 3 scenario cases for next fiscal year rolling forecast. Return JSON:\n"
+        f"{{\"bull\": {{\"name\": \"...\", \"probability\": 30, \"rationale\": \"...\","
+        f"\"drivers\": [\"...\"], "
+        f"\"metrics\": {{\"revenue\": \"...\", \"ebitda\": \"...\", \"vsplan\": \"+X%\", \"risk_adj\": \"...\"}}, "
+        f"\"sparkline\": [8 quarterly revenue numbers], "
+        f"\"keyAssumptions\": [\"...\"], \"macroTail\": \"...\"}}, "
+        f"\"base\": {{same}}, "
+        f"\"bear\": {{same}}, "
+        f"\"plan_summary\": {{\"revenue_target\": \"...\", \"ebitda_target\": \"...\", \"key_kpis\": [\"...\"]}}}}"
     )
-    if req.constraints:
-        prompt += f"\n\nConstraints: {req.constraints}"
-    try:
-        output = _run_agent_stage("ea", prompt)
-        return _resp("ea", output)
-    except Exception as e:
-        logger.exception("executive/scenario error")
-        raise HTTPException(status_code=500, detail=str(e))
+    raw = _call_claude(SYSTEM_EA, prompt, max_tokens=2500)
+    data = _parse_json_response(raw)
+    return _ok("ea", data)
 
 
-@app.post("/api/executive/brief", response_model=AgentResponse)
+@app.post("/api/executive/next-steps")
+def executive_next_steps(req: NextStepsRequest):
+    """EIT2: generate strategic action library (8-10 items) for variance management."""
+    org = _build_org_ctx(req.org_profile)
+    prompt = (
+        f"Business Plan:\n{req.business_plan[:800]}\n\n{org}\n\n"
+        f"Generate 8-10 strategic next-step actions for variance management. Return JSON:\n"
+        f"[{{\"id\": \"a1\", \"category\": \"REVENUE|COST|RISK|OPERATIONS|PARTNERSHIPS\", "
+        f"\"action\": \"short title\", \"description\": \"1-2 sentences\", "
+        f"\"impact\": \"High|Medium|Low\", \"effort\": \"High|Medium|Low\", "
+        f"\"timeline\": \"4-6 weeks\", \"capital\": \"VND 500M or null\"}}]"
+    )
+    raw = _call_claude(SYSTEM_EA, prompt, max_tokens=2000)
+    data = _parse_json_response(raw)
+    return _ok("ea", data)
+
+
+@app.post("/api/executive/simulate")
+def executive_simulate(req: SimulateRequest):
+    """EIT2: simulate variance impact of selected actions on chosen scenario."""
+    org = _build_org_ctx(req.org_profile)
+    sc = req.scenario_data
+    actions_str = json.dumps([{"action": a.get("action"), "impact": a.get("impact"), "capital": a.get("capital")} for a in req.selected_actions])
+    prompt = (
+        f"Scenario: {req.selected_scenario.upper()} CASE — {sc.get('name', '')}\n"
+        f"Probability: {sc.get('probability', 50)}%\n"
+        f"Scenario Metrics: {json.dumps(sc.get('metrics', {}))}\n"
+        f"Plan: {req.business_plan[:500]}\n{org}\n"
+        f"Selected Actions: {actions_str}\n\n"
+        f"Simulate variance impact. Return JSON:\n"
+        f"{{\"headline\": \"1 sentence outcome\","
+        f"\"plan_quarterly\": [4 numbers summing to 100],"
+        f"\"sim_quarterly\": [4 numbers summing to 100],"
+        f"\"unit\": \"% of Annual Target\","
+        f"\"variance_from_plan\": \"+/-X%\","
+        f"\"variance_confidence\": \"Low|Medium|High\","
+        f"\"adjusted_probability\": 0-100,"
+        f"\"key_changes\": [\"3-4 changes\"],"
+        f"\"residual_risks\": [\"2-3 risks\"],"
+        f"\"feasible_plan\": \"1-2 sentence conclusion\","
+        f"\"waterfall\": [{{\"label\": \"Base\", \"value\": 100, \"display\": \"100%\"}}, ..."
+        f"{{\"label\": \"Result\", \"value\": 115, \"display\": \"115%\"}}]}}"
+    )
+    raw = _call_claude(SYSTEM_EA, prompt, max_tokens=2000)
+    data = _parse_json_response(raw)
+    return _ok("ea", data)
+
+
+@app.post("/api/executive/improvements")
+def executive_improvements(req: ImprovementsRequest):
+    """EIT2: generate gap-close improvement suggestions to hit target variance."""
+    org = _build_org_ctx(req.org_profile)
+    steps_str = ", ".join(req.selected_steps)
+    prompt = (
+        f"Business Plan: {req.business_plan[:500]}\n{org}\n"
+        f"Scenario: {req.selected_scenario.upper()} — {req.sim_result.get('headline', '')}\n"
+        f"Current Variance from Plan: {req.sim_result.get('variance_from_plan', '0%')}\n"
+        f"User Target Variance: {req.target_variance}% plan adherence\n"
+        f"Constraints: Capital: {req.conditions.get('capital', 'N/A')}, "
+        f"PIC Qualification: {req.conditions.get('pic', 'N/A')}, "
+        f"Timeline: {req.conditions.get('timeline', 'N/A')}\n"
+        f"Selected Actions: {steps_str}\n\n"
+        f"Generate improvement suggestions to close the gap. Return JSON:\n"
+        f"{{\"secured_variance\": 0-100,"
+        f"\"feasibility_summary\": \"2 sentence statement\","
+        f"\"improvements\": [{{\"title\": \"...\", "
+        f"\"category\": \"REVENUE|COST|RISK|PROCESS|GOVERNANCE\","
+        f"\"priority\": \"Critical|High|Medium\","
+        f"\"description\": \"2 sentences\","
+        f"\"variance_impact\": \"+X% improvement\","
+        f"\"capital_required\": \"VND XM or Minimal\","
+        f"\"timeline\": \"X weeks\","
+        f"\"feasibility_score\": 0-100,"
+        f"\"conditions_met\": true,"
+        f"\"conditions\": [{{\"label\": \"...\", \"met\": true}}]}}]}}"
+    )
+    raw = _call_claude(SYSTEM_EA, prompt, max_tokens=2500)
+    data = _parse_json_response(raw)
+    return _ok("ea", data, requires_review=True)
+
+
+@app.post("/api/executive/brief")
 def executive_brief(req: BriefRequest):
-    prompt = f"Prepare an executive brief on: {req.topic}"
-    prior = req.prior_outputs or ""
-    try:
-        output = _run_agent_stage("ea", prompt, prior)
-        return _resp("ea", output)
-    except Exception as e:
-        logger.exception("executive/brief error")
-        raise HTTPException(status_code=500, detail=str(e))
-
-# ---------------------------------------------------------------------------
-# Drafting endpoints → Drafting Agent
-# ---------------------------------------------------------------------------
-
-@app.post("/api/drafting/engagement-letter", response_model=AgentResponse)
-def engagement_letter(req: EngagementLetterRequest):
+    """General: synthesise prior outputs into an executive brief."""
+    prior = f"\nPrior outputs:\n{req.prior_outputs}" if req.prior_outputs else ""
     prompt = (
-        f"Draft an engagement letter for {req.client_name} for {req.service_type} "
-        f"in {req.jurisdiction}."
+        f"Prepare an executive brief on: {req.topic}{prior}\n\n"
+        f"Return JSON: {{\"title\": \"...\", \"summary\": \"...\", "
+        f"\"key_findings\": [\"...\"], \"recommendations\": [\"...\"], "
+        f"\"risk_flags\": [\"...\"], \"confidence\": \"Low|Medium|High\"}}"
     )
-    if req.context:
-        prompt += f" Additional context: {req.context}"
-    try:
-        output = _run_agent_stage("drafting", prompt)
-        return _resp("drafting", output)
-    except Exception as e:
-        logger.exception("drafting/engagement-letter error")
-        raise HTTPException(status_code=500, detail=str(e))
+    raw = _call_claude(SYSTEM_EA, prompt, max_tokens=1500)
+    data = _parse_json_response(raw)
+    return _ok("ea", data, requires_review=True)
+
+
+@app.post("/api/executive/scenario")
+def executive_scenario(req: ScenarioRequest):
+    """General: full scenario analysis (non–War Room shorthand)."""
+    prompt = (
+        f"Run a {req.scenario_type} financial scenario analysis.\n\nBusiness plan:\n{req.business_plan}"
+        + (f"\n\nConstraints: {req.constraints}" if req.constraints else "")
+        + f"\n\nReturn JSON: {{\"scenarios\": {{\"bull\": {{...}}, \"base\": {{...}}, \"bear\": {{...}}}}}}"
+    )
+    raw = _call_claude(SYSTEM_EA, prompt, max_tokens=2500)
+    data = _parse_json_response(raw)
+    return _ok("ea", data)
+
+
+@app.post("/api/drafting/engagement-letter")
+def engagement_letter(client_name: str, jurisdiction: str, service_type: str, context: Optional[str] = None):
+    """Drafting Agent: engagement letter from approved template."""
+    prompt = (
+        f"Draft an engagement letter for {client_name} for {service_type} in {jurisdiction}."
+        + (f" Context: {context}" if context else "")
+        + f"\n\nReturn JSON: {{\"subject\": \"...\", \"salutation\": \"...\", "
+          f"\"body_paragraphs\": [\"...\"], \"scope\": \"...\", "
+          f"\"fee_structure\": \"...\", \"next_steps\": [\"...\"]}}"
+    )
+    raw = _call_claude(SYSTEM_DRAFTING, prompt, max_tokens=2000)
+    data = _parse_json_response(raw)
+    return _ok("drafting", data, requires_review=True)
