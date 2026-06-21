@@ -24,4 +24,4 @@ ENV AEGIS_STATIC_DIR=/app/frontend/aegis/dist
 EXPOSE 8000
 
 # PORT is provided by the host (Render/Railway); default 8000 locally.
-CMD ["sh", "-c", "uvicorn src.api_bridge:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD uvicorn src.api_bridge:app --host 0.0.0.0 --port ${PORT:-8000}
