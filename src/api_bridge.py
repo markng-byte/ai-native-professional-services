@@ -195,7 +195,76 @@ def health():
         "graph_rag": _engine._GRAPH is not None,
         "agents": list(_engine.AGENTS.keys()),
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "services": {
+            "anthropic": _is_live(),
+            "neo4j": _engine._GRAPH is not None,
+            "airtable": bool(os.getenv("AIRTABLE_API_KEY")),
+        },
     }
+
+
+# ---------------------------------------------------------------------------
+# News Feed — public RSS aggregator
+# ---------------------------------------------------------------------------
+
+import urllib.request
+import xml.etree.ElementTree as ET
+import html as _html
+
+_RSS_SOURCES = [
+    ("Reuters Business", "https://feeds.reuters.com/reuters/businessNews"),
+    ("Reuters World",    "https://feeds.reuters.com/reuters/worldNews"),
+    ("BBC Business",     "https://feeds.bbci.co.uk/news/business/rss.xml"),
+    ("CNBC",             "https://www.cnbc.com/id/100003114/device/rss/rss.html"),
+]
+
+def _fetch_rss(url: str, source_name: str, limit: int = 8) -> list:
+    items = []
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "AEGIS/1.0"})
+        with urllib.request.urlopen(req, timeout=6) as r:
+            root = ET.fromstring(r.read())
+        ns = {"atom": "http://www.w3.org/2005/Atom"}
+        for item in (root.iter("item") or root.iter("{http://www.w3.org/2005/Atom}entry")):
+            title_el = item.find("title")
+            link_el  = item.find("link")
+            desc_el  = item.find("description") or item.find("summary")
+            date_el  = item.find("pubDate") or item.find("updated")
+            title = _html.unescape(title_el.text or "") if title_el is not None else ""
+            link  = link_el.text or (link_el.get("href", "") if link_el is not None else "")
+            desc  = _html.unescape(desc_el.text or "") if desc_el is not None else ""
+            # strip any html tags from desc
+            import re
+            desc = re.sub(r"<[^>]+>", "", desc).strip()[:300]
+            if title:
+                items.append({
+                    "id": f"{source_name}_{len(items)}",
+                    "title": title,
+                    "description": desc,
+                    "link": link,
+                    "source": source_name,
+                    "publishedAt": date_el.text if date_el is not None else "",
+                })
+            if len(items) >= limit:
+                break
+    except Exception:
+        pass
+    return items
+
+@app.get("/api/news/feed")
+def news_feed():
+    all_items: list = []
+    for name, url in _RSS_SOURCES:
+        all_items.extend(_fetch_rss(url, name, limit=6))
+    # Sort by source variety (round-robin interleave)
+    from itertools import zip_longest
+    buckets: dict = {}
+    for it in all_items:
+        buckets.setdefault(it["source"], []).append(it)
+    interleaved = [
+        x for x in [item for group in zip_longest(*buckets.values()) for item in group if item]
+    ]
+    return {"items": interleaved[:30], "sources": list(buckets.keys())}
 
 
 # ---------------------------------------------------------------------------

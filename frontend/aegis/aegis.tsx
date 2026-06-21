@@ -180,20 +180,66 @@ function NotificationPanel({ onClose }: { onClose: () => void }) {
   )
 }
 
-// ─── Connection Badge ─────────────────────────────────────────────────────────
-function ConnectionBadge() {
+// ─── API Status Bar ───────────────────────────────────────────────────────────
+interface ApiServices { anthropic: boolean; neo4j: boolean; airtable: boolean }
+
+function ApiStatusBar() {
   const connected = useAegisStore(s => s.apiBridgeConnected)
-  return (
-    <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+  const [services, setServices] = useState<ApiServices | null>(null)
+
+  useEffect(() => {
+    const base = (import.meta as any).env?.VITE_API_BASE || ''
+    fetch(`${base}/api/health`, { signal: AbortSignal.timeout(3000) })
+      .then(r => r.json())
+      .then(d => d.services && setServices(d.services))
+      .catch(() => {})
+  }, [connected])
+
+  const dot = (on: boolean, label: string) => (
+    <div key={label} style={{ display:'flex', alignItems:'center', gap:4 }}>
       <div style={{
-        width:6, height:6, borderRadius:'50%',
-        background: connected ? C.teal : C.muted,
-        boxShadow: connected ? `0 0 8px ${C.teal}` : 'none',
+        width:5, height:5, borderRadius:'50%',
+        background: on ? C.teal : C.muted,
+        boxShadow: on ? `0 0 6px ${C.teal}` : 'none',
       }}/>
-      <span style={{ color: C.muted, fontSize:10, letterSpacing:1 }}>
-        {connected ? 'FIRM OS CONNECTED' : 'LOCAL MODE'}
-      </span>
+      <span style={{ color: on ? C.muted : C.dim, fontSize:9, letterSpacing:.5 }}>{label}</span>
     </div>
+  )
+
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+      {dot(connected, 'FIRM OS')}
+      {services && <>
+        {dot(services.anthropic, 'CLAUDE')}
+        {dot(services.neo4j,    'GRAPH')}
+        {dot(services.airtable, 'AIRTABLE')}
+      </>}
+    </div>
+  )
+}
+
+// ─── Change Profile button ────────────────────────────────────────────────────
+function ChangeProfileBtn({ sm }: { sm?: boolean }) {
+  const { clearUserProfile, setFeedInitialized } = useAegisStore()
+  return (
+    <button
+      onClick={() => { clearUserProfile(); setFeedInitialized(false) }}
+      title="Switch profile / demo role"
+      style={{
+        background:'none',
+        border:`1px solid ${C.border}`,
+        borderRadius:6,
+        color: C.muted,
+        fontSize: sm ? 10 : 11,
+        letterSpacing:.5,
+        padding: sm ? '3px 8px' : '4px 10px',
+        cursor:'pointer',
+        transition:'color 0.15s',
+        whiteSpace:'nowrap',
+      }}
+    >
+      ⇄ {sm ? '' : 'Change Profile'}
+    </button>
   )
 }
 
@@ -232,8 +278,9 @@ function TopBar() {
       </div>
 
       {/* Right cluster */}
-      <div style={{ display:'flex', alignItems:'center', gap:16 }}>
-        <ConnectionBadge />
+      <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+        <ApiStatusBar />
+        <ChangeProfileBtn />
 
         {/* Notification bell */}
         <button
@@ -435,13 +482,30 @@ function ModuleViewport() {
 
 // ─── EventBus wiring ──────────────────────────────────────────────────────────
 function useEventBusWiring() {
-  const { addToNewsfeedQueue, addToWarRoomQueue, addNotification, addTickerAlert } = useAegisStore()
+  const { addToNewsfeedQueue, addToWarRoomQueue, addNotification, addTickerAlert, addSignal } = useAegisStore()
 
   useEffect(() => {
-    // REGO CRITICAL → push to Newsfeed queue + ticker + notification
+    // REGO CRITICAL → push to Signal Feed + Newsfeed queue + ticker + notification
     const onCritical = (e: Parameters<typeof aegisBus.on>[1] extends (e: infer E) => void ? E : never) => {
-      const payload = e.payload as { title?: string; zone?: string } | undefined
+      const payload = e.payload as { title?: string; zone?: string; tag?: string } | undefined
       addToNewsfeedQueue(e.payload)
+      // Push into the global Signal Feed
+      addSignal({
+        id: `rego_${Date.now()}`,
+        title: payload?.title ?? 'Critical regulatory signal',
+        summary: `Macro Radar flagged a critical signal${payload?.zone ? ` in ${payload.zone}` : ''}.`,
+        confidence: 85,
+        level: 'CRITICAL',
+        sources: ['REGO Macro Radar'],
+        sourceCount: 1,
+        tags: ['REGO', payload?.zone ?? 'GLOBAL'],
+        timestamp: Date.now(),
+        jurisdiction: payload?.zone ?? 'GLOBAL',
+        actions: [
+          { label: 'Analyze Signal', module: 'REGO', icon: '⬡' },
+          { label: 'Run Scenario', module: 'EIT2', icon: '★' },
+        ],
+      })
       addTickerAlert({
         id: `t_${Date.now()}`, level:'CRITICAL', source:'REGO',
         text: payload?.title ?? 'New critical regulatory signal',
@@ -615,7 +679,9 @@ export default function Aegis() {
             </svg>
             <span style={{ color: C.teal, fontSize: 13, fontWeight: 700, letterSpacing: 3, marginLeft: 8 }}>AEGIS</span>
             <div style={{ flex: 1 }}/>
-            <ConnectionBadge />
+            <ApiStatusBar />
+            <div style={{ width: 8 }}/>
+            <ChangeProfileBtn sm />
           </div>
 
           <ModuleViewport />
