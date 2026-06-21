@@ -64,24 +64,62 @@ function ModuleLoader({ color }: { color: string }) {
 // ─── Global Ticker ────────────────────────────────────────────────────────────
 function GlobalTicker() {
   const alerts = useAegisStore(s => s.tickerAlerts)
-  const text = alerts.map(a => `[ ${a.level} · ${a.source} ]  ${a.text}`).join('     ·     ')
+  const addTickerAlert = useAegisStore(s => s.addTickerAlert)
+  const [tickKey, setTickKey] = useState(0)
+  const prevLen = useRef(alerts.length)
+
+  // Restart animation when new items arrive
+  useEffect(() => {
+    if (alerts.length !== prevLen.current) {
+      prevLen.current = alerts.length
+      setTickKey(k => k + 1)
+    }
+  }, [alerts.length])
+
+  // Fetch RSS headlines once and push to ticker
+  useEffect(() => {
+    const base = (import.meta as any).env?.VITE_API_BASE || ''
+    fetch(`${base}/api/news/feed`, { signal: AbortSignal.timeout(8000) })
+      .then(r => r.json())
+      .then(d => {
+        ;(d.items || []).slice(0, 10).forEach((item: any, i: number) => {
+          setTimeout(() => {
+            addTickerAlert({
+              id: `rss_${i}_${Date.now()}`,
+              level: 'HIGH',
+              source: item.source || 'NEWS',
+              text: item.title,
+            })
+          }, i * 400)
+        })
+      })
+      .catch(() => {})
+  }, [])
+
+  // Speed: chars / s ≈ text.length / duration. ~120px/s feels right.
+  const text = alerts.map(a => `[ ${a.level} · ${a.source} ]  ${a.text}`).join('          ·          ')
+  const duration = Math.max(20, text.length * 0.12)
+
   return (
     <div style={{
-      height:28, background:C.bg2, borderBottom:`1px solid ${C.border}`,
-      overflow:'hidden', display:'flex', alignItems:'center',
+      height: 28, background: C.bg2, borderBottom: `1px solid ${C.border}`,
+      overflow: 'hidden', display: 'flex', alignItems: 'center',
     }}>
       <div style={{
-        background: C.red, color:'#fff', fontSize:10, fontWeight:700,
-        letterSpacing:2, padding:'0 12px', height:'100%',
-        display:'flex', alignItems:'center', flexShrink:0,
+        background: C.red, color: '#fff', fontSize: 10, fontWeight: 700,
+        letterSpacing: 2, padding: '0 12px', height: '100%',
+        display: 'flex', alignItems: 'center', flexShrink: 0,
       }}>LIVE</div>
-      <div style={{ overflow:'hidden', flex:1 }}>
-        <div style={{
-          display:'inline-block',
-          color: C.text, fontSize:11, letterSpacing:1,
-          whiteSpace:'nowrap', paddingLeft:'100%',
-          animation:'aegis-ticker 75s linear infinite',
-        }}>
+      <div style={{ overflow: 'hidden', flex: 1 }}>
+        <div
+          key={tickKey}
+          style={{
+            display: 'inline-block',
+            color: C.text, fontSize: 11, letterSpacing: 0.5,
+            whiteSpace: 'nowrap', paddingLeft: '100%',
+            animation: `aegis-ticker ${duration}s linear infinite`,
+          }}
+        >
           {text}
         </div>
       </div>
@@ -683,6 +721,8 @@ export default function Aegis() {
             <div style={{ width: 8 }}/>
             <ChangeProfileBtn sm />
           </div>
+          {/* Live ticker on mobile */}
+          <GlobalTicker />
 
           <ModuleViewport />
           <BottomNav />
@@ -707,6 +747,7 @@ export default function Aegis() {
             <TopBar />
             <ModuleViewport />
             <BoardStrip />
+
           </div>
         </div>
       </div>
