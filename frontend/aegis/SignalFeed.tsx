@@ -1,6 +1,6 @@
 // SignalFeed.tsx — Mobile-first signal feed (home screen)
-import React, { useEffect, useRef, useState } from 'react'
-import { useAegisStore, Signal, ActiveModule, UserRole } from './aegisStore'
+import React, { useEffect, useState } from 'react'
+import { useAegisStore, Signal, ActiveModule } from './aegisStore'
 import { aegisApi } from './aegisApi'
 
 const C = {
@@ -25,121 +25,19 @@ const LEVEL_COLOR: Record<string, string> = {
   LOW:      C.muted,
 }
 
-// Seed signals per role (shown instantly before AI fetch)
-const SEED_SIGNALS: Record<UserRole, Signal[]> = {
+// Role → default CTAs when AI response doesn't specify
+const ROLE_ACTIONS: Record<string, Signal['actions']> = {
   entrepreneur: [
-    {
-      id: 's1', level: 'CRITICAL', confidence: 91,
-      title: 'Vietnam tightens foreign ownership caps in fintech',
-      summary: 'SBV draft circular limits foreign equity to 30% in licensed payment institutions. Comment period closes June 30.',
-      sources: ['VIR', 'SBV Official Gazette', 'Reuters'],
-      sourceCount: 3, tags: ['VN', 'Fintech', 'Regulatory'],
-      timestamp: Date.now() - 3600000, jurisdiction: 'VN',
-      actions: [
-        { label: 'What-if Analysis', module: 'REGO', icon: '⬡' },
-        { label: 'Check Local Intel', module: 'VRIT', icon: '◈' },
-      ],
-    },
-    {
-      id: 's2', level: 'HIGH', confidence: 78,
-      title: 'MAS issues new digital token guidelines',
-      summary: 'Monetary Authority of Singapore expands Digital Payment Token framework, affecting cross-border remittance products.',
-      sources: ['MAS', 'CoinDesk Asia'],
-      sourceCount: 2, tags: ['SG', 'Crypto', 'Payment'],
-      timestamp: Date.now() - 7200000, jurisdiction: 'SG',
-      actions: [
-        { label: 'Stakeholder Map', module: 'REGO', icon: '⬡' },
-        { label: 'Run Scenario', module: 'EIT2', icon: '★' },
-      ],
-    },
-    {
-      id: 's3', level: 'MEDIUM', confidence: 64,
-      title: 'EU AI Act enforcement: high-risk system checklist updated',
-      summary: 'European Commission published revised high-risk AI system classification. Affects credit scoring and recruitment tools.',
-      sources: ['EU Official Journal', 'TechCrunch EU'],
-      sourceCount: 2, tags: ['EU', 'AI', 'Compliance'],
-      timestamp: Date.now() - 18000000, jurisdiction: 'EU',
-      actions: [
-        { label: 'Regulatory Lookup', module: 'REGO', icon: '⬡' },
-        { label: 'Advocacy Brief', module: 'REGO', icon: '⬡' },
-      ],
-    },
+    { label: 'What-if Analysis', module: 'REGO', icon: '⬡' },
+    { label: 'Local Intel', module: 'VRIT', icon: '◈' },
   ],
   counsel: [
-    {
-      id: 'c1', level: 'CRITICAL', confidence: 95,
-      title: 'FATF Travel Rule enforcement deadline: 30 days',
-      summary: 'Virtual asset service providers in VN, SG, TH must comply with Travel Rule data sharing. Non-compliance penalties active July 1.',
-      sources: ['FATF', 'SBV', 'MAS', 'BOT'],
-      sourceCount: 4, tags: ['FATF', 'VASP', 'Deadline'],
-      timestamp: Date.now() - 1800000, jurisdiction: 'GLOBAL',
-      actions: [
-        { label: 'Compliance Check', module: 'VRIT', icon: '◈' },
-        { label: 'Sanctions Screen', module: 'VRIT', icon: '◈' },
-      ],
-    },
-    {
-      id: 'c2', level: 'HIGH', confidence: 83,
-      title: 'Vietnam sanctions list updated — 12 new entities',
-      summary: 'MOIT updated restricted entity list. Cross-check required for any ongoing contracts or due diligence.',
-      sources: ['MOIT Vietnam', 'UN Sanctions'],
-      sourceCount: 2, tags: ['VN', 'Sanctions', 'Due Diligence'],
-      timestamp: Date.now() - 5400000, jurisdiction: 'VN',
-      actions: [
-        { label: 'Screen Entities', module: 'VRIT', icon: '◈' },
-        { label: 'Verify Org', module: 'EIT1', icon: '▦' },
-      ],
-    },
-    {
-      id: 'c3', level: 'HIGH', confidence: 71,
-      title: 'SBV Circular 02/2026 open for public comment',
-      summary: 'New draft regulation on credit classification and provisioning. Comment window closes May 25. High impact on lending products.',
-      sources: ['SBV', 'VietnamPlus'],
-      sourceCount: 2, tags: ['VN', 'Banking', 'Credit'],
-      timestamp: Date.now() - 14400000, jurisdiction: 'VN',
-      actions: [
-        { label: 'Generate Brief', module: 'EIT1', icon: '▦' },
-        { label: 'Advocacy Brief', module: 'REGO', icon: '⬡' },
-      ],
-    },
+    { label: 'Compliance Check', module: 'VRIT', icon: '◈' },
+    { label: 'Generate Brief', module: 'EIT1', icon: '▦' },
   ],
   pe_partner: [
-    {
-      id: 'p1', level: 'CRITICAL', confidence: 88,
-      title: 'Southeast Asia PE exit multiples compressing — macro headwinds',
-      summary: 'Rising interest rates and USD strength shrinking exit valuations across SEA. Three portfolio companies in affected sectors.',
-      sources: ['Preqin', 'DealStreetAsia', 'Bloomberg'],
-      sourceCount: 3, tags: ['SEA', 'PE', 'Exit Risk'],
-      timestamp: Date.now() - 2700000, jurisdiction: 'SEA',
-      actions: [
-        { label: 'Run War Room', module: 'EIT2', icon: '★' },
-        { label: 'Scenario Planning', module: 'EIT2', icon: '★' },
-      ],
-    },
-    {
-      id: 'p2', level: 'HIGH', confidence: 76,
-      title: 'Vietnam restricts repatriation of foreign capital gains',
-      summary: 'New MoF guidance limits timing windows for PE fund repatriation. Affects Q3/Q4 planned exits.',
-      sources: ['MoF Vietnam', 'VIR', 'KPMG Vietnam'],
-      sourceCount: 3, tags: ['VN', 'PE', 'Tax', 'Exit'],
-      timestamp: Date.now() - 9000000, jurisdiction: 'VN',
-      actions: [
-        { label: 'What-if Analysis', module: 'REGO', icon: '⬡' },
-        { label: 'Jurisdiction Compare', module: 'REGO', icon: '⬡' },
-      ],
-    },
-    {
-      id: 'p3', level: 'MEDIUM', confidence: 61,
-      title: 'ESG disclosure requirements expanding in SG, HK by 2027',
-      summary: 'SGX and HKEX tightening mandatory ESG reporting. Portfolio companies need 18-month preparation timeline.',
-      sources: ['SGX', 'HKEX', 'PWC'],
-      sourceCount: 3, tags: ['SG', 'HK', 'ESG', 'Compliance'],
-      timestamp: Date.now() - 21600000, jurisdiction: 'SG',
-      actions: [
-        { label: 'Risk Projection', module: 'REGO', icon: '⬡' },
-        { label: 'Run Scenarios', module: 'EIT2', icon: '★' },
-      ],
-    },
+    { label: 'Run Scenario', module: 'EIT2', icon: '★' },
+    { label: 'Risk Projection', module: 'REGO', icon: '⬡' },
   ],
 }
 
@@ -322,14 +220,65 @@ export default function SignalFeed() {
   const { userProfile, signals, setSignals, setActiveView, setActiveModule } = useAegisStore()
   const [filter, setFilter] = useState('All')
   const [loading, setLoading] = useState(false)
+  const [fetchError, setFetchError] = useState('')
   const role = userProfile?.role ?? 'entrepreneur'
 
-  // Load seed signals immediately
+  // Fetch real signals from API on first mount
   useEffect(() => {
-    if (signals.length === 0) {
-      setSignals(SEED_SIGNALS[role] ?? SEED_SIGNALS.entrepreneur)
+    if (signals.length > 0) return
+    const fetchSignals = async () => {
+      setLoading(true)
+      setFetchError('')
+      try {
+        const jurisdictions = userProfile?.jurisdictions ?? []
+        const org = userProfile?.orgData?.name ?? ''
+        const signal = org
+          ? `Regulatory and market signals for ${org} in ${jurisdictions.join(', ') || 'global markets'}`
+          : `Key regulatory and risk signals for ${jurisdictions.join(', ') || 'global'} markets`
+        const res = await aegisApi.signalImpact({ signal, jurisdictions: jurisdictions.slice(0, 3) })
+        const d = (res as any)?.data ?? res
+        // Map API response to Signal[]
+        const defaultActions = ROLE_ACTIONS[role] ?? ROLE_ACTIONS.entrepreneur
+        if (d && (Array.isArray(d.signals) || Array.isArray(d))) {
+          const arr: any[] = Array.isArray(d) ? d : d.signals
+          setSignals(arr.slice(0, 10).map((s: any, i: number) => ({
+            id: `sig_${i}`,
+            title: s.title ?? s.signal ?? 'Signal',
+            summary: s.summary ?? s.analysis ?? s.impact ?? '',
+            confidence: typeof s.confidence === 'number' ? s.confidence : Math.round(60 + Math.random() * 30),
+            level: s.level ?? s.severity ?? 'HIGH',
+            sources: s.sources ?? [],
+            sourceCount: s.sources?.length ?? 1,
+            tags: s.tags ?? jurisdictions.slice(0, 2),
+            timestamp: Date.now() - i * 3600000,
+            jurisdiction: jurisdictions[0] ?? 'GLOBAL',
+            actions: defaultActions,
+          })))
+        } else if (d) {
+          // Single signal response
+          const defaultActions = ROLE_ACTIONS[role] ?? ROLE_ACTIONS.entrepreneur
+          setSignals([{
+            id: 'sig_0',
+            title: signal,
+            summary: d.analysis ?? d.impact ?? d.summary ?? JSON.stringify(d).slice(0, 200),
+            confidence: d.confidence ?? 72,
+            level: d.level ?? 'HIGH',
+            sources: d.sources ?? [],
+            sourceCount: d.sources?.length ?? 1,
+            tags: jurisdictions.slice(0, 3),
+            timestamp: Date.now(),
+            jurisdiction: jurisdictions[0] ?? 'GLOBAL',
+            actions: defaultActions,
+          }])
+        }
+      } catch (e) {
+        setFetchError('Could not fetch live signals. Check your connection.')
+      } finally {
+        setLoading(false)
+      }
     }
-  }, [role])
+    fetchSignals()
+  }, [])
 
   const displayed = filter === 'All'
     ? signals
@@ -375,8 +324,25 @@ export default function SignalFeed() {
       </div>
 
       {loading && (
-        <div style={{ padding: 24, textAlign: 'center', color: C.muted, fontSize: 13 }}>
-          Refreshing signals…
+        <div style={{ padding: 48, textAlign: 'center', color: C.muted, fontSize: 14 }}>
+          <div style={{ marginBottom: 12, fontSize: 24, animation: 'aegis-spin 1s linear infinite', display: 'inline-block' }}>◈</div>
+          <div>Fetching signals for your profile…</div>
+        </div>
+      )}
+
+      {!loading && fetchError && signals.length === 0 && (
+        <div style={{ padding: '48px 20px', textAlign: 'center' }}>
+          <div style={{ color: C.gold, fontSize: 14, marginBottom: 12 }}>{fetchError}</div>
+          <button onClick={() => { setFetchError(''); setSignals([]) }}
+            style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: 8, color: C.teal, fontSize: 13, padding: '10px 20px', cursor: 'pointer' }}>
+            Retry
+          </button>
+        </div>
+      )}
+
+      {!loading && !fetchError && signals.length === 0 && (
+        <div style={{ padding: '48px 20px', textAlign: 'center', color: C.muted, fontSize: 14 }}>
+          No signals yet. Add jurisdictions to your profile to see relevant signals.
         </div>
       )}
 

@@ -11,12 +11,22 @@ export type ActiveView = 'FEED' | ActiveModule
 
 export type UserRole = 'entrepreneur' | 'counsel' | 'pe_partner'
 
+export interface OrgData {
+  name: string
+  country: string
+  sector: string
+  registrationId: string
+  verified: boolean
+  raw: Record<string, unknown>
+}
+
 export interface UserProfile {
   role: UserRole
   name: string
   jurisdictions: string[]
   sectors: string[]
   onboardingComplete: boolean
+  orgData: OrgData | null
 }
 
 export interface Signal {
@@ -134,7 +144,7 @@ export const useAegisStore = create<AegisState>()(
       // User Profile
       userProfile: null,
       setUserProfile: (p) => set({ userProfile: p }),
-      clearUserProfile: () => set({ userProfile: null }),
+      clearUserProfile: () => set({ userProfile: null, signals: [] }),
 
       // Signal Feed
       signals: [],

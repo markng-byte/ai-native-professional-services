@@ -7,6 +7,7 @@ import { aegisBus } from './eventBus'
 import { ModuleErrorBoundary } from './ModuleErrorBoundary'
 import LoginScreen from './LoginScreen'
 import OnboardingFlow from './OnboardingFlow'
+import ProfileMappingLoader from './ProfileMappingLoader'
 import SignalFeed from './SignalFeed'
 
 // ─── Lazy-load modules (keeps bundle fast) ──────────────────────────────────
@@ -557,6 +558,7 @@ export default function Aegis() {
   useApiBridgeCheck()
   const isMobile = useIsMobile()
   const userProfile = useAegisStore(s => s.userProfile)
+  const [mappingDone, setMappingDone] = useState(false)
 
   // Not logged in → Login screen
   if (!userProfile) {
@@ -574,6 +576,16 @@ export default function Aegis() {
       <>
         <GlobalStyles />
         <OnboardingFlow />
+      </>
+    )
+  }
+
+  // Just finished onboarding → mapping loader (once per session)
+  if (!mappingDone) {
+    return (
+      <>
+        <GlobalStyles />
+        <ProfileMappingLoader onDone={() => setMappingDone(true)} />
       </>
     )
   }

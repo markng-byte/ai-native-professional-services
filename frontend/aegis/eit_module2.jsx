@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { aegisApi } from "./aegisApi";
+import { useAegisStore } from "./aegisStore";
 
 
 // ── DESIGN TOKENS (matches EIT Module 1) ──────────────────────────────────────
@@ -34,32 +35,7 @@ const SIM_STAGES = [
   { id:"output",   label:"OUTPUT",   icon:"✔" },
 ];
 
-const SAMPLE_PLAN = `Company: Nami Foundation – CBDC Infrastructure Division
-FY2026 Revenue Target: VND 48,000,000,000
-Key Revenue Streams:
-  - CBDC middleware licensing to MB Bank & BIDV: VND 28B (58%)
-  - Stablecoin (VNST) transaction fees: VND 12B (25%)
-  - Consulting & integration services: VND 8B (17%)
-
-Cost Structure:
-  - Engineering & R&D: VND 18B
-  - Sales & BD: VND 6B
-  - Ops & Compliance: VND 4B
-  - Total OPEX: VND 28B
-
-EBITDA Target: VND 20B (42% margin)
-
-Strategic KPIs (BSC):
-  Financial: Revenue growth 80% YoY, EBITDA margin >40%
-  Customer: 3 signed bank partnerships, NPS >60
-  Process: CBDC middleware v2.0 launch Q2, ISO 27001 cert Q3
-  Learning: 2 quantum-security engineers hired, team 35→45
-
-Key Assumptions:
-  - SBV CBDC pilot expands to 5 banks by Q3 2026
-  - NQ57 amendments pass without major delays
-  - CypherCore Japan partnership operationalized Q1
-  - USD/VND stable at 24,500–25,500`;
+const SAMPLE_PLAN = ``;
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 const nowTime = () => new Date().toLocaleTimeString("en", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -450,9 +426,16 @@ function ImprovementsPanel({ improvements, targetVariance, conditions }) {
 
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 export default function App() {
+  const storeProfile = useAegisStore(s => s.userProfile);
+  const orgData = storeProfile?.orgData;
   const [tab, setTab] = useState("INPUT");
   const [planText, setPlanText] = useState(SAMPLE_PLAN);
-  const [orgCtx, setOrgCtx] = useState({ name: "Nami Foundation", sector: "Crypto/Web3", geo: "Vietnam", risk: "Aggressive" });
+  const [orgCtx, setOrgCtx] = useState({
+    name: orgData?.name ?? "",
+    sector: orgData?.sector ?? (storeProfile?.sectors?.[0] ?? ""),
+    geo: orgData?.country ?? (storeProfile?.jurisdictions?.[0] ?? ""),
+    risk: storeProfile?.role === "pe_partner" ? "Aggressive" : storeProfile?.role === "counsel" ? "Conservative" : "Moderate",
+  });
 
   // Stage 1: Scenario generation
   const [genRunning, setGenRunning] = useState(false);
@@ -606,7 +589,7 @@ export default function App() {
   ];
 
   return (
-    <div style={{ background: C.bg, color: C.offwhite, fontFamily: "'Inter',system-ui,sans-serif", minHeight: "100vh", fontSize: 12 }}>
+    <div style={{ background: C.bg, color: C.offwhite, fontFamily: "'Inter',system-ui,sans-serif", minHeight: "100vh", fontSize: 12, overflowX: "hidden", maxWidth: "100vw", boxSizing: "border-box" }}>
       {/* Header */}
       <div style={{ background: C.bg2, borderBottom: `1px solid ${C.border}`, padding: "0 20px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 48 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -645,7 +628,7 @@ export default function App() {
 
       {/* ── INPUT TAB ─────────────────────────────────────────────────────── */}
       {tab === "INPUT" && (
-        <div style={{ padding: 20, display: "grid", gridTemplateColumns: "1fr 320px", gap: 16, alignItems: "start", maxWidth: 1100, margin: "0 auto" }}>
+        <div style={{ padding: 20, display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,280px)", gap: 16, alignItems: "start", maxWidth: "100%", boxSizing: "border-box" }}>
           <div>
             <Sec title="BUSINESS PLAN / STRATEGY INPUT">
               <div style={{ color: C.muted, fontSize: 10, lineHeight: 1.6, marginBottom: 10 }}>
@@ -902,7 +885,7 @@ export default function App() {
       {/* ── IMPROVEMENTS TAB ────────────────────────────────────────────────── */}
       {tab === "IMPROVEMENTS" && improvements && (
         <div style={{ padding: 20, maxWidth: 1100, margin: "0 auto" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 16, alignItems: "start" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,280px)", gap: 16, alignItems: "start" }}>
             <div>
               <Sec title={`IMPROVEMENT PLAN · ${targetVariance}% TARGET VARIANCE · ${selectedScenario?.toUpperCase()} CASE`}>
                 <ImprovementsPanel improvements={improvements} targetVariance={targetVariance} conditions={conditions} />

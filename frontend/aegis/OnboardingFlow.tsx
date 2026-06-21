@@ -1,6 +1,7 @@
-// OnboardingFlow.tsx — 3-step onboarding after role selection
+// OnboardingFlow.tsx — 4-step onboarding after role selection
 import React, { useState } from 'react'
-import { useAegisStore } from './aegisStore'
+import { useAegisStore, OrgData } from './aegisStore'
+import { aegisApi } from './aegisApi'
 
 const C = {
   bg:     '#07100e',
@@ -84,16 +85,70 @@ export default function OnboardingFlow() {
   const [jurisdictions, setJurisdictions] = useState<string[]>([])
   const [sectors, setSectors] = useState<string[]>([])
 
+  // Org step state
+  const [orgQuery, setOrgQuery] = useState('')
+  const [orgSearching, setOrgSearching] = useState(false)
+  const [orgResult, setOrgResult] = useState<OrgData | null>(null)
+  const [orgError, setOrgError] = useState('')
+  const [orgManual, setOrgManual] = useState(false)
+  const [orgManualName, setOrgManualName] = useState('')
+  const [orgManualCountry, setOrgManualCountry] = useState('')
+
   const toggle = (arr: string[], val: string, set: (a: string[]) => void) =>
     set(arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val])
 
-  const finish = () => {
+  const searchOrg = async () => {
+    if (!orgQuery.trim()) return
+    setOrgSearching(true)
+    setOrgError('')
+    setOrgResult(null)
+    try {
+      const res = await aegisApi.verifyOrg({ name: orgQuery.trim() })
+      const d = (res as any)?.data ?? res
+      if (d && (d.name || d.org_name)) {
+        setOrgResult({
+          name: d.name || d.org_name || orgQuery,
+          country: d.country || d.jurisdiction || '',
+          sector: d.sector || d.industry || '',
+          registrationId: d.registration_id || d.id || '',
+          verified: true,
+          raw: d,
+        })
+      } else {
+        setOrgError('Could not verify automatically. You can enter details manually.')
+        setOrgManual(true)
+      }
+    } catch {
+      setOrgError('Verification unavailable. Enter details manually.')
+      setOrgManual(true)
+    } finally {
+      setOrgSearching(false)
+    }
+  }
+
+  const finish = (skipOrg = false) => {
     if (!userProfile) return
+    let orgData: OrgData | null = null
+    if (!skipOrg) {
+      if (orgResult) {
+        orgData = orgResult
+      } else if (orgManual && orgManualName.trim()) {
+        orgData = {
+          name: orgManualName.trim(),
+          country: orgManualCountry.trim(),
+          sector: sectors[0] || '',
+          registrationId: '',
+          verified: false,
+          raw: {},
+        }
+      }
+    }
     setUserProfile({
       ...userProfile,
       name: name.trim() || 'User',
       jurisdictions,
       sectors,
+      orgData,
       onboardingComplete: true,
     })
   }
@@ -102,6 +157,7 @@ export default function OnboardingFlow() {
     name.trim().length > 0,
     jurisdictions.length > 0,
     sectors.length > 0,
+    true, // org step always skippable
   ]
 
   const roleLabel: Record<string, string> = {
@@ -156,7 +212,7 @@ export default function OnboardingFlow() {
         maxWidth: 480, margin: '0 auto', width: '100%',
         animation: 'fadeUp 0.4s ease both',
       }}>
-        <StepDots total={3} current={step} />
+        <StepDots total={4} current={step} />
 
         {/* Step 0 — Name */}
         {step === 0 && (
@@ -233,6 +289,101 @@ export default function OnboardingFlow() {
             </div>
           </div>
         )}
+
+        {/* Step 3 — Org */}
+        {step === 3 && (
+          <div>
+            <div style={{ color: C.text, fontSize: 22, fontWeight: 700, marginBottom: 8 }}>
+              What's your organisation?
+            </div>
+            <div style={{ color: C.muted, fontSize: 14, marginBottom: 24 }}>
+              We'll verify and use this to personalise analysis. You can skip this.
+            </div>
+
+            {!orgResult && (
+              <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+                <input
+                  autoFocus
+                  type="text"
+                  value={orgQuery}
+                  onChange={e => { setOrgQuery(e.target.value); setOrgError(''); setOrgManual(false) }}
+                  onKeyDown={e => e.key === 'Enter' && searchOrg()}
+                  placeholder="Company or organisation name"
+                  style={{
+                    flex: 1, padding: '14px 16px',
+                    background: C.bg2, border: `1.5px solid ${C.border}`,
+                    borderRadius: 10, color: C.text, fontSize: 15,
+                    outline: 'none', fontFamily: 'inherit',
+                  }}
+                />
+                <button
+                  onClick={searchOrg}
+                  disabled={!orgQuery.trim() || orgSearching}
+                  style={{
+                    padding: '14px 20px', borderRadius: 10,
+                    background: orgSearching ? C.dim : C.teal,
+                    border: 'none', color: C.bg,
+                    fontSize: 14, fontWeight: 700,
+                    cursor: orgSearching ? 'wait' : 'pointer',
+                    fontFamily: 'inherit', whiteSpace: 'nowrap',
+                  }}
+                >
+                  {orgSearching ? '…' : 'Search'}
+                </button>
+              </div>
+            )}
+
+            {orgError && (
+              <div style={{ color: C.gold, fontSize: 13, marginBottom: 12 }}>{orgError}</div>
+            )}
+
+            {/* Verified result */}
+            {orgResult && (
+              <div style={{
+                background: `${C.teal}10`, border: `1.5px solid ${C.teal}`,
+                borderRadius: 10, padding: 16, marginBottom: 12,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ color: C.teal, fontSize: 12, fontWeight: 700 }}>✓ VERIFIED</span>
+                  <button onClick={() => { setOrgResult(null); setOrgQuery('') }}
+                    style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 12 }}>
+                    Change
+                  </button>
+                </div>
+                <div style={{ color: C.text, fontSize: 16, fontWeight: 600 }}>{orgResult.name}</div>
+                {orgResult.country && <div style={{ color: C.muted, fontSize: 13, marginTop: 4 }}>{orgResult.country}{orgResult.sector ? ` · ${orgResult.sector}` : ''}</div>}
+              </div>
+            )}
+
+            {/* Manual entry */}
+            {orgManual && !orgResult && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <input
+                  type="text"
+                  value={orgManualName}
+                  onChange={e => setOrgManualName(e.target.value)}
+                  placeholder="Organisation name"
+                  style={{
+                    padding: '13px 16px', background: C.bg2,
+                    border: `1.5px solid ${C.border}`, borderRadius: 10,
+                    color: C.text, fontSize: 15, outline: 'none', fontFamily: 'inherit',
+                  }}
+                />
+                <input
+                  type="text"
+                  value={orgManualCountry}
+                  onChange={e => setOrgManualCountry(e.target.value)}
+                  placeholder="Country / jurisdiction (optional)"
+                  style={{
+                    padding: '13px 16px', background: C.bg2,
+                    border: `1.5px solid ${C.border}`, borderRadius: 10,
+                    color: C.text, fontSize: 15, outline: 'none', fontFamily: 'inherit',
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Footer nav */}
@@ -256,7 +407,7 @@ export default function OnboardingFlow() {
           </button>
         )}
         <button
-          onClick={() => step < 2 ? setStep(s => s + 1) : finish()}
+          onClick={() => step < 3 ? setStep(s => s + 1) : finish()}
           disabled={!canNext[step]}
           style={{
             flex: 1, padding: '15px',
@@ -270,21 +421,21 @@ export default function OnboardingFlow() {
             fontFamily: 'inherit',
           }}
         >
-          {step < 2 ? 'Next →' : 'Enter AEGIS →'}
+          {step < 3 ? 'Next →' : 'Enter AEGIS →'}
         </button>
       </div>
 
       {/* Skip */}
       <div style={{ textAlign: 'center', marginTop: 16, padding: '0 24px' }}>
         <button
-          onClick={finish}
+          onClick={() => step === 3 ? finish(true) : finish()}
           style={{
             background: 'none', border: 'none',
             color: C.dim, fontSize: 12, cursor: 'pointer',
             fontFamily: 'inherit',
           }}
         >
-          Skip setup — I'll configure later
+          {step === 3 ? 'Skip — add organisation later' : 'Skip setup — I\'ll configure later'}
         </button>
       </div>
     </div>

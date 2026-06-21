@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { aegisApi, type SseEvent } from "./aegisApi";
+import { useAegisStore } from "./aegisStore";
 
 
 const C = {
@@ -772,16 +773,31 @@ function ReportsTab({reports,setReports,profile}){
 
 // ── APP ───────────────────────────────────────────────────────────────────────
 export default function App(){
-  const [tab,setTab]=useState("PROFILE");
-  const [profile,setProfile]=useState({name:"",sectors:[],geos:[],assets:[],risk:"",priorities:"",role:"",roleLevel:null});
-  const [intelligence,setIntelligence]=useState([]);
-  const [reports,setReports]=useState([]);
+  const storeProfile = useAegisStore(s => s.userProfile);
+  const orgData = storeProfile?.orgData;
+  // Skip PROFILE tab if already set from onboarding
+  const hasProfile = !!(storeProfile?.name && (storeProfile?.sectors?.length || orgData?.name));
+  const [tab,setTab]=useState(hasProfile ? "INGESTION" : "PROFILE");
+  const [profile,setProfile]=useState({
+    name: orgData?.name ?? storeProfile?.name ?? "",
+    sectors: storeProfile?.sectors ?? [],
+    geos: storeProfile?.jurisdictions ?? [],
+    assets:[],
+    risk: storeProfile?.role === "pe_partner" ? "Aggressive" : storeProfile?.role === "counsel" ? "Conservative" : "Moderate",
+    priorities: "",
+    role: storeProfile?.role ?? "",
+    roleLevel: null,
+  });
+  const [intelligence,setIntelligence]=useState([] as any[]);
+  const [reports,setReports]=useState([] as any[]);
   const addIntel=card=>setIntelligence(p=>[card,...p.filter(c=>c.id!==card.id)]);
   const addReport=({type,card})=>{setReports(p=>[{id:uid(),type,card,cardTitle:card.title,status:"PENDING",result:null},...p]);setTab("REPORTS");};
   const isLv2=profile.roleLevel===2;
-  const TABS=isLv2?["PROFILE","NEWSFEED","REPORTS"]:["PROFILE","INGESTION","NEWSFEED","REPORTS"];
+  const TABS=hasProfile
+    ? (isLv2 ? ["NEWSFEED","REPORTS"] : ["INGESTION","NEWSFEED","REPORTS"])
+    : (isLv2 ? ["PROFILE","NEWSFEED","REPORTS"] : ["PROFILE","INGESTION","NEWSFEED","REPORTS"]);
   const TAB_LABEL={PROFILE:"◈ ORG PROFILE",INGESTION:"⬡ INGESTION",NEWSFEED:"▦ NEWSFEED",REPORTS:"⊞ REPORTS"};
-  const COUNTS={NEWSFEED:intelligence.length||20,REPORTS:reports.length||SAMPLE_REPORTS.length};
+  const COUNTS={NEWSFEED:intelligence.length||0,REPORTS:reports.length||0};
   const roleInfo=[...ROLES.lv1,...ROLES.lv2].find(r=>r.id===profile.role);
   return(
     <div style={{background:C.bg,color:C.offwhite,fontFamily:"'Inter',system-ui,sans-serif",minHeight:"100vh",fontSize:12}}>
