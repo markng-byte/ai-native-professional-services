@@ -7,6 +7,37 @@ import { persist } from 'zustand/middleware'
 export type RoleLevel = 'lv1' | 'lv2'
 export type RiskAppetite = 'low' | 'medium' | 'high'
 export type ActiveModule = 'REGO' | 'VRIT' | 'EIT1' | 'EIT2'
+export type ActiveView = 'FEED' | ActiveModule
+
+export type UserRole = 'entrepreneur' | 'counsel' | 'pe_partner'
+
+export interface UserProfile {
+  role: UserRole
+  name: string
+  jurisdictions: string[]
+  sectors: string[]
+  onboardingComplete: boolean
+}
+
+export interface Signal {
+  id: string
+  title: string
+  summary: string
+  confidence: number          // 0–100
+  level: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
+  sources: string[]
+  sourceCount: number
+  tags: string[]
+  timestamp: number
+  jurisdiction: string
+  actions: SignalAction[]
+}
+
+export interface SignalAction {
+  label: string
+  module: ActiveModule
+  icon: string
+}
 
 export interface OrgProfile {
   name: string
@@ -41,8 +72,20 @@ interface AegisState {
   // Navigation
   activeModule: ActiveModule
   setActiveModule: (m: ActiveModule) => void
+  activeView: ActiveView
+  setActiveView: (v: ActiveView) => void
   sidebarCollapsed: boolean
   setSidebarCollapsed: (v: boolean) => void
+
+  // User Profile (login / onboarding)
+  userProfile: UserProfile | null
+  setUserProfile: (p: UserProfile) => void
+  clearUserProfile: () => void
+
+  // Signal Feed
+  signals: Signal[]
+  setSignals: (s: Signal[]) => void
+  addSignal: (s: Signal) => void
 
   // Org Profile
   orgProfile: OrgProfile | null
@@ -82,9 +125,21 @@ export const useAegisStore = create<AegisState>()(
     (set, get) => ({
       // Navigation
       activeModule: 'REGO',
-      setActiveModule: (m) => set({ activeModule: m }),
+      setActiveModule: (m) => set({ activeModule: m, activeView: m }),
+      activeView: 'FEED',
+      setActiveView: (v) => set({ activeView: v }),
       sidebarCollapsed: false,
       setSidebarCollapsed: (v) => set({ sidebarCollapsed: v }),
+
+      // User Profile
+      userProfile: null,
+      setUserProfile: (p) => set({ userProfile: p }),
+      clearUserProfile: () => set({ userProfile: null }),
+
+      // Signal Feed
+      signals: [],
+      setSignals: (s) => set({ signals: s }),
+      addSignal: (s) => set((st) => ({ signals: [s, ...st.signals].slice(0, 100) })),
 
       // Org Profile
       orgProfile: null,
@@ -137,6 +192,7 @@ export const useAegisStore = create<AegisState>()(
     {
       name: 'aegis-store',
       partialize: (s) => ({
+        userProfile: s.userProfile,
         orgProfile: s.orgProfile,
         profileComplete: s.profileComplete,
         sidebarCollapsed: s.sidebarCollapsed,

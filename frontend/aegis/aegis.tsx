@@ -5,6 +5,9 @@ import React, { Suspense, useEffect, useRef, useState } from 'react'
 import { useAegisStore, ActiveModule, AegisNotification } from './aegisStore'
 import { aegisBus } from './eventBus'
 import { ModuleErrorBoundary } from './ModuleErrorBoundary'
+import LoginScreen from './LoginScreen'
+import OnboardingFlow from './OnboardingFlow'
+import SignalFeed from './SignalFeed'
 
 // ─── Lazy-load modules (keeps bundle fast) ──────────────────────────────────
 const MacroRadar  = React.lazy(() => import('./rego_dashboard_v4'))
@@ -339,10 +342,67 @@ function Sidebar() {
   )
 }
 
+// ─── Bottom Nav (mobile) ─────────────────────────────────────────────────────
+function BottomNav() {
+  const { activeView, setActiveView, setActiveModule } = useAegisStore()
+
+  const items = [
+    { id: 'FEED', icon: '⊡', label: 'Feed', color: C.teal },
+    ...MODULES.map(m => ({ id: m.id, icon: m.icon, label: m.shortLabel, color: m.color })),
+  ]
+
+  return (
+    <div style={{
+      height: 60, background: C.bg2,
+      borderTop: `1px solid ${C.border}`,
+      display: 'flex', alignItems: 'stretch',
+      flexShrink: 0,
+    }}>
+      {items.map(item => {
+        const active = activeView === item.id
+        return (
+          <button
+            key={item.id}
+            onClick={() => {
+              setActiveView(item.id as any)
+              if (item.id !== 'FEED') setActiveModule(item.id as ActiveModule)
+            }}
+            style={{
+              flex: 1, display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', gap: 3,
+              background: 'none', border: 'none',
+              borderTop: `2px solid ${active ? item.color : 'transparent'}`,
+              cursor: 'pointer', transition: 'all 0.15s',
+            }}
+          >
+            <span style={{
+              fontSize: 18, color: active ? item.color : C.dim,
+              filter: active ? `drop-shadow(0 0 6px ${item.color})` : 'none',
+              transition: 'all 0.15s',
+            }}>{item.icon}</span>
+            <span style={{
+              fontSize: 9, letterSpacing: 1, fontWeight: 700,
+              color: active ? item.color : C.dim,
+            }}>{item.label}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 // ─── Module Viewport ──────────────────────────────────────────────────────────
 function ModuleViewport() {
-  const activeModule = useAegisStore(s => s.activeModule)
+  const { activeView, activeModule } = useAegisStore()
   const mod = MODULES.find(m => m.id === activeModule)!
+
+  if (activeView === 'FEED') {
+    return (
+      <div style={{ flex: 1, overflow: 'auto', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+        <SignalFeed />
+      </div>
+    )
+  }
 
   return (
     <div style={{ flex:1, overflow:'auto', position:'relative', display:'flex', flexDirection:'column' }}>
@@ -480,11 +540,79 @@ function GlobalStyles() {
   )
 }
 
+// ─── useIsMobile ─────────────────────────────────────────────────────────────
+function useIsMobile() {
+  const [mobile, setMobile] = useState(() => window.innerWidth < 768)
+  useEffect(() => {
+    const handler = () => setMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [])
+  return mobile
+}
+
 // ─── Root ───────────────────────────────────────────────────────────────
 export default function Aegis() {
   useEventBusWiring()
   useApiBridgeCheck()
+  const isMobile = useIsMobile()
+  const userProfile = useAegisStore(s => s.userProfile)
 
+  // Not logged in → Login screen
+  if (!userProfile) {
+    return (
+      <>
+        <GlobalStyles />
+        <LoginScreen />
+      </>
+    )
+  }
+
+  // Logged in but not onboarded → Onboarding flow
+  if (!userProfile.onboardingComplete) {
+    return (
+      <>
+        <GlobalStyles />
+        <OnboardingFlow />
+      </>
+    )
+  }
+
+  // Mobile layout — bottom nav, no sidebar
+  if (isMobile) {
+    return (
+      <>
+        <GlobalStyles />
+        <div style={{
+          display: 'flex', flexDirection: 'column',
+          height: '100dvh', overflow: 'hidden',
+          background: C.bg, color: C.text,
+        }}>
+          {/* Compact top bar on mobile */}
+          <div style={{
+            height: 44, background: C.bg2,
+            borderBottom: `1px solid ${C.border}`,
+            display: 'flex', alignItems: 'center',
+            padding: '0 16px', flexShrink: 0,
+          }}>
+            <svg width={20} height={20} viewBox="0 0 24 24">
+              <polygon points="12,2 22,8 22,16 12,22 2,16 2,8"
+                fill="none" stroke={C.teal} strokeWidth={1.5}/>
+              <circle cx={12} cy={12} r={2} fill={C.teal}/>
+            </svg>
+            <span style={{ color: C.teal, fontSize: 13, fontWeight: 700, letterSpacing: 3, marginLeft: 8 }}>AEGIS</span>
+            <div style={{ flex: 1 }}/>
+            <ConnectionBadge />
+          </div>
+
+          <ModuleViewport />
+          <BottomNav />
+        </div>
+      </>
+    )
+  }
+
+  // Desktop layout — sidebar + topbar
   return (
     <>
       <GlobalStyles />
@@ -493,10 +621,7 @@ export default function Aegis() {
         height:'100vh', overflow:'hidden', background: C.bg,
         color: C.text,
       }}>
-        {/* Top ticker */}
         <GlobalTicker />
-
-        {/* Main: sidebar + content */}
         <div style={{ display:'flex', flex:1, overflow:'hidden' }}>
           <Sidebar />
           <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
