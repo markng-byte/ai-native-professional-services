@@ -5,9 +5,10 @@
 // Drop this file next to the AEGIS module files (sibling of eventBus.ts /
 // aegisStore.ts) and import as `./aegisApi`.
 
+// Same-origin by default (single-host deploy: FastAPI serves the build + /api).
+// For local split dev (Vite :5173 + bridge :8000) set VITE_API_BASE=http://localhost:8000.
 const BASE =
-  (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_API_BASE) ||
-  "http://localhost:8000";
+  (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_API_BASE) || "";
 
 // Standard envelope returned by every bridge endpoint.
 export interface AegisMeta {

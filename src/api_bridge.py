@@ -25,16 +25,22 @@ from __future__ import annotations
 
 import asyncio
 import json
+import base64
 import logging
 import os
+import secrets
 import sys
+import time
 import uuid
+from collections import defaultdict, deque
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -59,6 +65,73 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ---------------------------------------------------------------------------
+# Public-demo protection (only active when the relevant env vars are set)
+#
+#   DEMO_USER / DEMO_PASSWORD  → HTTP Basic gate over the whole site + API.
+#                                Unset → no gate (local dev).
+#   RATE_LIMIT_PER_HOUR        → max AI requests per client IP per hour
+#                                (default 60). Protects the Claude key from
+#                                being burned on a public link.
+# ---------------------------------------------------------------------------
+_DEMO_USER = os.getenv("DEMO_USER", "")
+_DEMO_PASSWORD = os.getenv("DEMO_PASSWORD", "")
+_RATE_LIMIT = int(os.getenv("RATE_LIMIT_PER_HOUR", "60"))
+_RATE_WINDOW = 3600  # seconds
+_rate_buckets: Dict[str, deque] = defaultdict(deque)
+
+# Paths that never require auth / rate-limiting.
+_OPEN_PATHS = {"/api/health", "/favicon.ico"}
+
+
+class BasicAuthMiddleware(BaseHTTPMiddleware):
+    """Shared-password HTTP Basic gate. No-op when DEMO_PASSWORD is unset."""
+
+    async def dispatch(self, request: Request, call_next):
+        if not _DEMO_PASSWORD or request.url.path in _OPEN_PATHS:
+            return await call_next(request)
+        header = request.headers.get("Authorization", "")
+        if header.startswith("Basic "):
+            try:
+                raw = base64.b64decode(header[6:]).decode("utf-8", "replace")
+                user, _, pwd = raw.partition(":")
+                if secrets.compare_digest(user, _DEMO_USER or user) and secrets.compare_digest(pwd, _DEMO_PASSWORD):
+                    return await call_next(request)
+            except Exception:
+                pass
+        return Response(
+            status_code=401,
+            headers={"WWW-Authenticate": 'Basic realm="AEGIS Demo"'},
+            content="Authentication required",
+        )
+
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    """Per-IP sliding-window limit on AI endpoints (POST/GET under /api/, except open paths)."""
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if path.startswith("/api/") and path not in _OPEN_PATHS:
+            ip = (request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+                  or (request.client.host if request.client else "unknown"))
+            now = time.time()
+            bucket = _rate_buckets[ip]
+            while bucket and now - bucket[0] > _RATE_WINDOW:
+                bucket.popleft()
+            if len(bucket) >= _RATE_LIMIT:
+                retry = int(_RATE_WINDOW - (now - bucket[0]))
+                return JSONResponse(
+                    status_code=429,
+                    headers={"Retry-After": str(retry)},
+                    content={"detail": f"Rate limit reached ({_RATE_LIMIT}/hour). Try again in {retry // 60} min."},
+                )
+            bucket.append(now)
+        return await call_next(request)
+
+
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(BasicAuthMiddleware)
 
 # ---------------------------------------------------------------------------
 # Core Claude caller (server-side, key never leaves backend)
@@ -243,11 +316,12 @@ def jurisdiction_compare(req: JurisdictionCompareRequest):
     """REGO: Compare multiple jurisdictions across requested dimensions."""
     juris_str = ", ".join(req.jurisdictions)
     dims = ", ".join(req.dimensions) if req.dimensions else "cost, tax, substance, banking access, FATF status, timeline"
+    juris_cols = ", ".join('"{}": "..."'.format(j) for j in req.jurisdictions)
     prompt = (
         f"Compare jurisdictions: {juris_str}.\nDimensions: {dims}.\n"
         + (f"Context: {req.context}" if req.context else "")
         + f"\n\nReturn JSON: {{\"comparison_table\": [{{\"dimension\": \"...\", "
-          f"{', '.join(f'\"{j}\": \"...\"' for j in req.jurisdictions)}}}], "
+          f"{juris_cols}}}], "
           f"\"recommendation\": \"...\", \"confidence\": \"Low|Medium|High\"}}"
     )
     raw = _call_claude(SYSTEM_RESEARCH, prompt)
@@ -767,3 +841,21 @@ def engagement_letter(client_name: str, jurisdiction: str, service_type: str, co
     raw = _call_claude(SYSTEM_DRAFTING, prompt, max_tokens=2000)
     data = _parse_json_response(raw)
     return _ok("drafting", data, requires_review=True)
+
+
+# ---------------------------------------------------------------------------
+# Static frontend (single-host deploy)
+#
+# When the AEGIS React app is built (frontend/aegis/dist), serve it at "/" so
+# one URL hosts both the UI and the API. Mounted LAST so every /api/* route
+# above takes precedence. Set AEGIS_STATIC_DIR to override the location.
+# ---------------------------------------------------------------------------
+_STATIC_DIR = os.getenv(
+    "AEGIS_STATIC_DIR",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "aegis", "dist"),
+)
+if os.path.isdir(_STATIC_DIR):
+    app.mount("/", StaticFiles(directory=_STATIC_DIR, html=True), name="static")
+    logger.info("Serving AEGIS frontend from %s", _STATIC_DIR)
+else:
+    logger.info("No frontend build at %s — API-only mode", _STATIC_DIR)
