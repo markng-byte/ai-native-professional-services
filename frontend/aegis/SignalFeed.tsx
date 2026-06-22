@@ -230,7 +230,7 @@ export default function SignalFeed() {
   const [fetchError, setFetchError] = useState('')
   const role = userProfile?.role ?? 'entrepreneur'
 
-  // Fetch real signals from API on first mount
+  // Fetch signals from API on first mount via ingestion pipeline
   useEffect(() => {
     if (signals.length > 0) return
     const fetchSignals = async () => {
@@ -239,44 +239,46 @@ export default function SignalFeed() {
       try {
         const jurisdictions = userProfile?.jurisdictions ?? []
         const org = userProfile?.orgData?.name ?? ''
-        const signal = org
-          ? `Regulatory and market signals for ${org} in ${jurisdictions.join(', ') || 'global markets'}`
-          : `Key regulatory and risk signals for ${jurisdictions.join(', ') || 'global'} markets`
-        const res = await aegisApi.signalImpact({ signal, jurisdictions: jurisdictions.slice(0, 3) })
-        const d = (res as any)?.data ?? res
-        // Map API response to Signal[]
+        const sectors = userProfile?.sectors ?? []
+        const input = [
+          org ? `${org} regulatory and market intelligence` : '',
+          jurisdictions.slice(0, 3).join(', '),
+          sectors.slice(0, 2).join(', '),
+          '2026 financial regulatory signals SEA',
+        ].filter(Boolean).join('; ')
+
+        const res = await aegisApi.ingest({
+          mode: 'keywords',
+          input,
+          org_profile: {
+            name: org || 'AEGIS Client',
+            sectors,
+            geos: jurisdictions,
+            risk_appetite: 'moderate',
+          },
+        })
+        const cards: any[] = (res as any)?.cards ?? []
         const defaultActions = ROLE_ACTIONS[role] ?? ROLE_ACTIONS.entrepreneur
-        if (d && (Array.isArray(d.signals) || Array.isArray(d))) {
-          const arr: any[] = Array.isArray(d) ? d : d.signals
-          setSignals(arr.slice(0, 10).map((s: any, i: number) => ({
-            id: `sig_${i}`,
-            title: s.title ?? s.signal ?? 'Signal',
-            summary: s.summary ?? s.analysis ?? s.impact ?? '',
-            confidence: typeof s.confidence === 'number' ? s.confidence : Math.round(60 + Math.random() * 30),
-            level: s.level ?? s.severity ?? 'HIGH',
-            sources: s.sources ?? [],
-            sourceCount: s.sources?.length ?? 1,
-            tags: s.tags ?? jurisdictions.slice(0, 2),
+
+        if (cards.length > 0) {
+          const LEVEL_MAP: Record<string, Signal['level']> = {
+            Escalate: 'CRITICAL', Act: 'HIGH', Investigate: 'MEDIUM', Monitor: 'LOW',
+            high: 'HIGH', moderate: 'MEDIUM', monitoring: 'LOW',
+          }
+          setSignals(cards.slice(0, 12).map((c: any, i: number) => ({
+            id: c.id ?? `sig_${i}`,
+            title: c.headline ?? c.title ?? 'Signal',
+            summary: c.synthesis ?? c.summary ?? c.description ?? '',
+            confidence: typeof c.rawCredibility === 'number' ? c.rawCredibility
+              : typeof c.impactScore === 'number' ? c.impactScore : 72,
+            level: LEVEL_MAP[c.suggestedAction] ?? LEVEL_MAP[c.priority] ?? 'HIGH',
+            sources: c.source ? [c.source] : [],
+            sourceCount: 1,
+            tags: [c.category ?? 'SIGNAL', ...(jurisdictions.slice(0, 1))].filter(Boolean),
             timestamp: Date.now() - i * 3600000,
             jurisdiction: jurisdictions[0] ?? 'GLOBAL',
             actions: defaultActions,
           })))
-        } else if (d) {
-          // Single signal response
-          const defaultActions = ROLE_ACTIONS[role] ?? ROLE_ACTIONS.entrepreneur
-          setSignals([{
-            id: 'sig_0',
-            title: signal,
-            summary: d.analysis ?? d.impact ?? d.summary ?? JSON.stringify(d).slice(0, 200),
-            confidence: d.confidence ?? 72,
-            level: d.level ?? 'HIGH',
-            sources: d.sources ?? [],
-            sourceCount: d.sources?.length ?? 1,
-            tags: jurisdictions.slice(0, 3),
-            timestamp: Date.now(),
-            jurisdiction: jurisdictions[0] ?? 'GLOBAL',
-            actions: defaultActions,
-          }])
         }
       } catch (e) {
         setFetchError('Could not fetch live signals. Check your connection.')
