@@ -458,7 +458,17 @@ function IngestionTab({profile,onIntelligenceReady}){
           if(stopRef.current) return;
           if(e.type==="stage"){ setStage(e.stage); if(e.log) addLog(e.log, e.log.startsWith("\u2713")?"success":"teal"); }
           else if(e.type==="log"){ addLog(e.log); }
-          else if(e.type==="result"){ newCards=e.data?.cards||[]; setCards(newCards); }
+          else if(e.type==="result"){
+            newCards=(e.data?.cards||[]).map((c:any)=>({
+              ...c,
+              title: c.title ?? c.headline ?? "",
+              credibilityScore: c.credibilityScore ?? c.rawCredibility ?? 70,
+              synthesis: c.synthesis ?? c.summary ?? "",
+              suggestedAction: c.suggestedAction ?? "Investigate",
+              category: c.category ?? "SECTOR",
+            }));
+            setCards(newCards);
+          }
           else if(e.type==="done"){ addLog(e.log,"success"); }
         }
       );
@@ -731,13 +741,18 @@ function NewsfeedTab({intelligence,onReport}){
 function ReportsTab({reports,setReports,profile}){
   const [expanded,setExpanded]=useState("r1");
   const [loading,setLoading]=useState(null);
+  const [analysisError,setAnalysisError]=useState<string|null>(null);
   const runAnalysis=async id=>{
     const all=[...reports,...SAMPLE_REPORTS];const rep=all.find(r=>r.id===id);if(!rep)return;
-    setLoading(id);
-    const orgCtx=`Org:${profile.name||"Unknown"}.Sectors:${(profile.sectors||[]).join(",")}.Geos:${(profile.geos||[]).join(",")}.Risk:${profile.risk||"Moderate"}.`;
-    const result=await aegisApi.reportGenerate({ report_type: rep.type, signal: rep.card, card_title: rep.cardTitle, org_profile: { name:profile.name, sectors:profile.sectors, geos:profile.geos, risk_appetite:profile.risk } });
-    setReports(p=>{const ex=p.find(r=>r.id===id);if(ex)return p.map(r=>r.id===id?{...r,status:"COMPLETE",result}:r);return[{...rep,status:"COMPLETE",result},...p];});
-    setLoading(null);
+    setLoading(id);setAnalysisError(null);
+    try{
+      const result=await aegisApi.reportGenerate({ report_type: rep.type, signal: rep.card, card_title: rep.cardTitle, org_profile: { name:profile.name, sectors:profile.sectors, geos:profile.geos, risk_appetite:profile.risk } });
+      setReports(p=>{const ex=p.find(r=>r.id===id);if(ex)return p.map(r=>r.id===id?{...r,status:"COMPLETE",result}:r);return[{...rep,status:"COMPLETE",result},...p];});
+    }catch(err:any){
+      setAnalysisError(err?.message||"Analysis failed — check API key in Settings.");
+    }finally{
+      setLoading(null);
+    }
   };
   const stCol={PENDING:C.gold,COMPLETE:C.green,CANCELLED:C.red};
   const stIcon={PENDING:"○",COMPLETE:"✓",CANCELLED:"✕"};
@@ -745,6 +760,7 @@ function ReportsTab({reports,setReports,profile}){
   return(
     <div style={{padding:20}}>
       {reports.length===0&&<div style={{background:C.tealGlow,border:`1px solid ${C.tealDim}40`,borderRadius:6,padding:"8px 14px",fontSize:11,color:C.teal,fontWeight:700,marginBottom:14}}>◈ SAMPLE REPORTS — request a report from any intelligence card in the Newsfeed</div>}
+      {analysisError&&<div style={{background:C.redBg,border:`1px solid ${C.redBorder}`,borderRadius:6,padding:"8px 14px",fontSize:11,color:C.red,fontWeight:700,marginBottom:14}}>⚠ {analysisError}</div>}
       <div style={{background:C.bg2,border:`1px solid ${C.border}`,borderRadius:8,padding:14,marginBottom:16,display:"flex"}}>
         {[["TOTAL",displayReports.length,C.offwhite],["PENDING",displayReports.filter(r=>r.status==="PENDING").length,C.gold],["COMPLETE",displayReports.filter(r=>r.status==="COMPLETE").length,C.green]].map(([l,v,c],i,arr)=>(
           <div key={l} style={{flex:1,textAlign:"center",borderRight:i<arr.length-1?`1px solid ${C.border}`:"none",padding:"4px 0"}}>

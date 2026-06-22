@@ -35,7 +35,10 @@ const SIM_STAGES = [
   { id:"output",   label:"OUTPUT",   icon:"✔" },
 ];
 
-const SAMPLE_PLAN = ``;
+const SAMPLE_PLAN = `Business: CBDC middleware & digital asset compliance platform for Vietnamese commercial banks.
+Revenue target FY2026: VND 48B. 3 bank partnerships planned (MB Bank, BIDV, Techcombank). VNST transaction fees (35%), consulting retainers (30%), licensing (20%), advisory (15%).
+Key risks: NQ57 regulatory timeline slippage, talent shortfall in quantum-security engineering, FX exposure on USD-denominated CypherCore Japan contract.
+Q1 priority: close MB Bank MOU to binding SLA. Q2: CBDC v2.0 launch. Q3: ISO 27001 certification.`;
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 const nowTime = () => new Date().toLocaleTimeString("en", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });

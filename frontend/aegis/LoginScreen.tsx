@@ -59,6 +59,8 @@ const ROLES: RoleCard[] = [
 
 export default function LoginScreen() {
   const setUserProfile = useAegisStore(s => s.setUserProfile)
+  const clearUserProfile = useAegisStore(s => s.clearUserProfile)
+  const setFeedInitialized = useAegisStore(s => s.setFeedInitialized)
   const [selected, setSelected] = useState<UserRole | null>(null)
   const [hovering, setHovering] = useState<UserRole | null>(null)
   const [adminOpen, setAdminOpen] = useState(false)
@@ -74,6 +76,8 @@ export default function LoginScreen() {
       setAdminError('Invalid admin credentials.')
       return
     }
+    clearUserProfile()
+    setFeedInitialized(false)
     setUserProfile({
       role: 'admin',
       name: adminUser.trim() || 'Administrator',
