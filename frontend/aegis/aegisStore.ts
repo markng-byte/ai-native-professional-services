@@ -9,7 +9,7 @@ export type RiskAppetite = 'low' | 'medium' | 'high'
 export type ActiveModule = 'REGO' | 'VRIT' | 'EIT1' | 'EIT2'
 export type ActiveView = 'FEED' | ActiveModule
 
-export type UserRole = 'entrepreneur' | 'counsel' | 'pe_partner'
+export type UserRole = 'entrepreneur' | 'counsel' | 'pe_partner' | 'admin'
 
 export interface OrgData {
   name: string

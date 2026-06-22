@@ -61,6 +61,35 @@ export default function LoginScreen() {
   const setUserProfile = useAegisStore(s => s.setUserProfile)
   const [selected, setSelected] = useState<UserRole | null>(null)
   const [hovering, setHovering] = useState<UserRole | null>(null)
+  const [adminOpen, setAdminOpen] = useState(false)
+  const [adminUser, setAdminUser] = useState('')
+  const [adminPass, setAdminPass] = useState('')
+  const [adminError, setAdminError] = useState('')
+
+  const ADMIN_USER = (import.meta as any).env?.VITE_ADMIN_USER || 'admin'
+  const ADMIN_PASS = (import.meta as any).env?.VITE_ADMIN_PASSCODE || 'aegis-admin-2026'
+
+  const loginAdmin = () => {
+    if (adminUser.trim() !== ADMIN_USER || adminPass !== ADMIN_PASS) {
+      setAdminError('Invalid admin credentials.')
+      return
+    }
+    setUserProfile({
+      role: 'admin',
+      name: adminUser.trim() || 'Administrator',
+      jurisdictions: ['VN', 'SG', 'EU', 'US', 'HK'],
+      sectors: ['pe', 'fintech', 'crypto', 'tech', 'real_estate'],
+      orgData: {
+        name: 'AEGIS Control',
+        country: 'Global',
+        sector: 'All Sectors',
+        registrationId: '',
+        verified: true,
+        raw: {},
+      },
+      onboardingComplete: true,
+    })
+  }
 
   const proceed = () => {
     if (!selected) return
@@ -289,14 +318,74 @@ export default function LoginScreen() {
           animation: 'fadeUp 0.5s 0.55s ease both',
         }}
       >
-        ★ Explore full demo — Alex Tan, Meridian Capital
+        ★ Explore demo — Alex Tan, Meridian Capital (PE)
       </button>
+
+      {/* Admin access */}
+      {!adminOpen ? (
+        <button
+          onClick={() => setAdminOpen(true)}
+          style={{
+            marginTop: 18, background: 'none', border: 'none',
+            color: C.muted, fontSize: 12, cursor: 'pointer',
+            letterSpacing: 0.5, animation: 'fadeUp 0.5s 0.6s ease both',
+          }}
+        >
+          ⛨ Super admin access
+        </button>
+      ) : (
+        <div style={{
+          width: '100%', maxWidth: 420, marginTop: 20,
+          padding: 16, borderRadius: 12,
+          border: `1.5px solid ${C.red}30`, background: `${C.red}08`,
+          display: 'flex', flexDirection: 'column', gap: 10,
+          animation: 'fadeUp 0.3s ease both',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: C.red, fontSize: 12, fontWeight: 700, letterSpacing: 1 }}>⛨ SUPER ADMIN</span>
+            <button onClick={() => { setAdminOpen(false); setAdminError('') }}
+              style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 14 }}>×</button>
+          </div>
+          <input
+            type="text" value={adminUser} autoFocus
+            onChange={e => { setAdminUser(e.target.value); setAdminError('') }}
+            placeholder="Admin username"
+            style={{
+              padding: '12px 14px', background: C.bg2,
+              border: `1.5px solid ${C.border}`, borderRadius: 8,
+              color: C.text, fontSize: 14, outline: 'none', fontFamily: 'inherit',
+            }}
+          />
+          <input
+            type="password" value={adminPass}
+            onChange={e => { setAdminPass(e.target.value); setAdminError('') }}
+            onKeyDown={e => e.key === 'Enter' && loginAdmin()}
+            placeholder="Passcode"
+            style={{
+              padding: '12px 14px', background: C.bg2,
+              border: `1.5px solid ${adminError ? C.red : C.border}`, borderRadius: 8,
+              color: C.text, fontSize: 14, outline: 'none', fontFamily: 'inherit',
+            }}
+          />
+          {adminError && <div style={{ color: C.red, fontSize: 12 }}>{adminError}</div>}
+          <button
+            onClick={loginAdmin}
+            style={{
+              padding: '13px', borderRadius: 8, border: 'none',
+              background: C.red, color: '#fff',
+              fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            Enter as Administrator →
+          </button>
+        </div>
+      )}
 
       <div style={{
         marginTop: 16, color: C.dim, fontSize: 11, textAlign: 'center',
         animation: 'fadeUp 0.5s 0.6s ease both',
       }}>
-        Full demo loads a PE Managing Partner with every module unlocked.
+        Admin bypasses all profile filters — sees every role's signals merged.
       </div>
     </div>
   )

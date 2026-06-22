@@ -39,6 +39,13 @@ const ROLE_ACTIONS: Record<string, Signal['actions']> = {
     { label: 'Run Scenario', module: 'EIT2', icon: '★' },
     { label: 'Risk Projection', module: 'REGO', icon: '⬡' },
   ],
+  // Admin sees every module's primary action
+  admin: [
+    { label: 'Analyze (Macro Radar)', module: 'REGO', icon: '⬡' },
+    { label: 'Local Intel', module: 'VRIT', icon: '◈' },
+    { label: 'Generate Brief', module: 'EIT1', icon: '▦' },
+    { label: 'Run War Room', module: 'EIT2', icon: '★' },
+  ],
 }
 
 function ConfidenceBar({ value, color }: { value: number; color: string }) {
