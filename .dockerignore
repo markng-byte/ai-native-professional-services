@@ -1,0 +1,9 @@
+**/node_modules
+**/dist
+**/__pycache__
+**/*.pyc
+.git
+.venv
+venv
+*.md
+frontend/aegis/node_modules

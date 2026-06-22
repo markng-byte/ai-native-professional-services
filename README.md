@@ -26,7 +26,43 @@ pip install -r requirements.txt
 streamlit run src/app.py
 ```
 
-It runs **out-of-the-box with no API key** (deterministic simulation engine in `src/engine.py`). Set `ANTHROPIC_API_KEY` and flip the **⚡ Live AI synthesis** toggle to stream the Executive Assistant's brief from a real Claude model.
+It runs **out-of-the-box with no API key**. Set `ANTHROPIC_API_KEY` and flip the **⚡ Live AI** toggle to stream each agent stage from a real Claude model.
+
+---
+
+## GraphRAG Engine (L1 Knowledge Foundation — implemented)
+
+The knowledge graph is **live**, not mocked. `src/graph/` implements the GraphRAG
+Query Engine specified in `L1_Knowledge_Foundation/GRAPH_SCHEMA.md`, with a
+**dual backend**:
+
+| Backend | When | Setup |
+|---|---|---|
+| **NetworkX** (in-memory) | default — dev / demo | none; seeds from `src/graph/seed/seed_data.json` |
+| **Neo4j** (production) | when `NEO4J_URI` is set | Neo4j Aura free tier or self-hosted |
+
+The same canonical queries run on either backend (`src/graph/queries.py`):
+
+- **UBO chain traversal** — walks `OWNS` edges, multiplying ownership % along
+  each path and summing across paths (a real graph walk, e.g. resolves a UBO to
+  100% via two paths).
+- **Jurisdiction comparison** — queries `Jurisdiction` nodes across 6 dimensions.
+- **Mandates due** — date-filters `Service_Mandate` renewal dates.
+
+These power the **Research**, **Compliance (UBO)** and **Operations** agents with
+real graph results; agents fall back to a clearly-labelled simulation only when
+no graph data matches. Switch to production by setting:
+
+```bash
+export NEO4J_URI="neo4j+s://<your-instance>.databases.neo4j.io"
+export NEO4J_USER="neo4j"
+export NEO4J_PASSWORD="<password>"
+```
+
+Salesforce ingestion (Stage 1 of the indexing pipeline) is stubbed in
+`src/graph/ingestion/salesforce_adapter.py` — wire `SF_*` credentials to sync
+real Clients and Mandates into the graph. Run the graph tests with
+`python tests/test_graph.py`.
 
 ---
 
