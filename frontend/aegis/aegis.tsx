@@ -3,6 +3,7 @@
 
 import React, { Suspense, useEffect, useRef, useState } from 'react'
 import { useAegisStore, ActiveModule, AegisNotification } from './aegisStore'
+import { setUserApiKey as apiSetUserKey, setUserModel as apiSetUserModel } from './aegisApi'
 import { aegisBus } from './eventBus'
 import { ModuleErrorBoundary } from './ModuleErrorBoundary'
 import LoginScreen from './LoginScreen'
@@ -223,15 +224,18 @@ interface ApiServices { anthropic: boolean; neo4j: boolean; airtable: boolean }
 
 function ApiStatusBar() {
   const connected = useAegisStore(s => s.apiBridgeConnected)
+  const userApiKey = useAegisStore(s => s.userApiKey)
   const [services, setServices] = useState<ApiServices | null>(null)
 
   useEffect(() => {
     const base = (import.meta as any).env?.VITE_API_BASE || ''
-    fetch(`${base}/api/health`, { signal: AbortSignal.timeout(3000) })
+    const headers: Record<string, string> = {}
+    if (userApiKey) headers['X-User-Api-Key'] = userApiKey
+    fetch(`${base}/api/health`, { headers, signal: AbortSignal.timeout(3000) })
       .then(r => r.json())
       .then(d => d.services && setServices(d.services))
       .catch(() => {})
-  }, [connected])
+  }, [connected, userApiKey])
 
   const dot = (on: boolean, label: string) => (
     <div key={label} style={{ display:'flex', alignItems:'center', gap:4 }}>
@@ -281,9 +285,168 @@ function ChangeProfileBtn({ sm }: { sm?: boolean }) {
   )
 }
 
+// ─── Settings Modal (Bring-Your-Own API key) ─────────────────────────────────
+const MODEL_OPTIONS = [
+  { id: '',                       label: 'Server default' },
+  { id: 'claude-opus-4-8',        label: 'Claude Opus 4.8 (most capable)' },
+  { id: 'claude-sonnet-4-6',      label: 'Claude Sonnet 4.6 (balanced)' },
+  { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5 (fastest)' },
+]
+
+function SettingsModal({ onClose }: { onClose: () => void }) {
+  const { userApiKey, setUserApiKey, userModel, setUserModel } = useAegisStore()
+  const [draftKey, setDraftKey] = useState(userApiKey)
+  const [draftModel, setDraftModel] = useState(userModel)
+  const [reveal, setReveal] = useState(false)
+  const [health, setHealth] = useState<{ live_ai?: boolean; key_source?: string; model?: string } | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  const refreshHealth = (key: string) => {
+    const base = (import.meta as any).env?.VITE_API_BASE || ''
+    const headers: Record<string, string> = {}
+    if (key) headers['X-User-Api-Key'] = key
+    fetch(`${base}/api/health`, { headers, signal: AbortSignal.timeout(4000) })
+      .then(r => r.json())
+      .then(setHealth)
+      .catch(() => setHealth(null))
+  }
+  useEffect(() => { refreshHealth(userApiKey) }, [])
+
+  const save = () => {
+    const key = draftKey.trim()
+    setUserApiKey(key)
+    setUserModel(draftModel)
+    apiSetUserKey(key)         // keep the api client in sync immediately
+    apiSetUserModel(draftModel)
+    setSaved(true)
+    refreshHealth(key)
+    setTimeout(() => setSaved(false), 1800)
+  }
+  const clear = () => {
+    setDraftKey(''); setDraftModel('')
+    setUserApiKey(''); setUserModel('')
+    apiSetUserKey(''); apiSetUserModel('')
+    refreshHealth('')
+  }
+
+  const live = health?.live_ai
+  const src = health?.key_source
+  const statusColor = live ? C.teal : C.gold
+  const statusText = !health ? 'Checking…'
+    : live ? `Live AI · using ${src === 'user' ? 'your key' : 'server key'}${health.model ? ` · ${health.model}` : ''}`
+    : 'Simulation mode — add a key for live AI'
+
+  const field: React.CSSProperties = {
+    width: '100%', background: C.bg, border: `1px solid ${C.border}`,
+    borderRadius: 6, color: C.text, fontSize: 13, padding: '10px 12px',
+    fontFamily: 'inherit', outline: 'none',
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.66)',
+        zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 16,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: 'min(480px, 100%)', maxHeight: '90vh', overflowY: 'auto',
+          background: C.bg2, border: `1px solid ${C.border}`, borderRadius: 12,
+          boxShadow: '0 24px 64px rgba(0,0,0,0.7)',
+        }}
+      >
+        {/* Header */}
+        <div style={{
+          padding: '16px 20px', borderBottom: `1px solid ${C.border}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <span style={{ color: C.teal, fontSize: 13, letterSpacing: 2, fontWeight: 700 }}>⚙ SETTINGS</span>
+          <button onClick={onClose} style={{
+            background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 20,
+          }}>×</button>
+        </div>
+
+        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {/* Live status */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{
+              width: 8, height: 8, borderRadius: '50%', background: statusColor,
+              boxShadow: `0 0 8px ${statusColor}`,
+            }}/>
+            <span style={{ color: C.text, fontSize: 12 }}>{statusText}</span>
+          </div>
+
+          {/* API key */}
+          <div>
+            <label style={{ color: C.muted, fontSize: 11, letterSpacing: 1, display: 'block', marginBottom: 6 }}>
+              ANTHROPIC API KEY
+            </label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                type={reveal ? 'text' : 'password'}
+                value={draftKey}
+                onChange={e => setDraftKey(e.target.value)}
+                placeholder="sk-ant-..."
+                autoComplete="off"
+                spellCheck={false}
+                style={{ ...field, flex: 1 }}
+              />
+              <button onClick={() => setReveal(v => !v)} style={{
+                background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 6,
+                color: C.muted, fontSize: 11, padding: '0 12px', cursor: 'pointer',
+              }}>{reveal ? 'Hide' : 'Show'}</button>
+            </div>
+            <div style={{ color: C.dim, fontSize: 11, marginTop: 6, lineHeight: 1.5 }}>
+              Stored only in this browser and sent directly to the AEGIS bridge with each
+              request. Never shared with other users. Get a key at{' '}
+              <span style={{ color: C.muted }}>console.anthropic.com</span>.
+            </div>
+          </div>
+
+          {/* Model */}
+          <div>
+            <label style={{ color: C.muted, fontSize: 11, letterSpacing: 1, display: 'block', marginBottom: 6 }}>
+              MODEL
+            </label>
+            <select
+              value={draftModel}
+              onChange={e => setDraftModel(e.target.value)}
+              style={{ ...field, cursor: 'pointer' }}
+            >
+              {MODEL_OPTIONS.map(m => (
+                <option key={m.id} value={m.id} style={{ background: C.bg2 }}>{m.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <button onClick={save} style={{
+              flex: 1, background: C.teal, border: 'none', borderRadius: 6,
+              color: C.bg, fontSize: 13, fontWeight: 700, letterSpacing: 1,
+              padding: '11px 0', cursor: 'pointer',
+            }}>{saved ? '✓ SAVED' : 'SAVE'}</button>
+            <button onClick={clear} disabled={!draftKey && !userApiKey} style={{
+              background: 'none', border: `1px solid ${C.border}`, borderRadius: 6,
+              color: C.muted, fontSize: 12, padding: '11px 16px',
+              cursor: (draftKey || userApiKey) ? 'pointer' : 'not-allowed',
+              opacity: (draftKey || userApiKey) ? 1 : 0.5,
+            }}>Clear</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Topbar ───────────────────────────────────────────────────────────────────
 function TopBar() {
   const [notifOpen, setNotifOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const unread = useAegisStore(s => s.unreadCount)
   const activeModule = useAegisStore(s => s.activeModule)
   const mod = MODULES.find(m => m.id === activeModule)!
@@ -341,14 +504,18 @@ function TopBar() {
         </button>
 
         {/* Settings */}
-        <button style={{
-          background:'none', border:`1px solid ${C.border}`, borderRadius:4,
-          color: C.muted, fontSize:11, letterSpacing:1, padding:'4px 10px',
-          cursor:'pointer',
-        }}>⚙ SETTINGS</button>
+        <button
+          onClick={() => setSettingsOpen(true)}
+          style={{
+            background:'none', border:`1px solid ${C.border}`, borderRadius:4,
+            color: C.muted, fontSize:11, letterSpacing:1, padding:'4px 10px',
+            cursor:'pointer',
+          }}
+        >⚙ SETTINGS</button>
       </div>
 
       {notifOpen && <NotificationPanel onClose={() => setNotifOpen(false)} />}
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
     </div>
   )
 }
@@ -659,6 +826,7 @@ export default function Aegis() {
   useEventBusWiring()
   useApiBridgeCheck()
   const isMobile = useIsMobile()
+  const [mobileSettings, setMobileSettings] = useState(false)
   const userProfile = useAegisStore(s => s.userProfile)
   const feedInitialized = useAegisStore(s => s.feedInitialized)
   const setFeedInitialized = useAegisStore(s => s.setFeedInitialized)
@@ -720,12 +888,21 @@ export default function Aegis() {
             <ApiStatusBar />
             <div style={{ width: 8 }}/>
             <ChangeProfileBtn sm />
+            <button
+              onClick={() => setMobileSettings(true)}
+              title="Settings"
+              style={{
+                background: 'none', border: `1px solid ${C.border}`, borderRadius: 6,
+                color: C.muted, fontSize: 13, padding: '3px 8px', marginLeft: 8, cursor: 'pointer',
+              }}
+            >⚙</button>
           </div>
           {/* Live ticker on mobile */}
           <GlobalTicker />
 
           <ModuleViewport />
           <BottomNav />
+          {mobileSettings && <SettingsModal onClose={() => setMobileSettings(false)} />}
         </div>
       </>
     )

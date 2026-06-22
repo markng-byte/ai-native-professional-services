@@ -130,6 +130,12 @@ interface AegisState {
   // API Bridge status
   apiBridgeConnected: boolean
   setApiBridgeConnected: (v: boolean) => void
+
+  // User-supplied AI credentials (BYO key — stored in browser, sent per request)
+  userApiKey: string
+  setUserApiKey: (v: string) => void
+  userModel: string
+  setUserModel: (v: string) => void
 }
 
 export const useAegisStore = create<AegisState>()(
@@ -202,6 +208,12 @@ export const useAegisStore = create<AegisState>()(
       // API Bridge
       apiBridgeConnected: false,
       setApiBridgeConnected: (v) => set({ apiBridgeConnected: v }),
+
+      // User-supplied AI credentials
+      userApiKey: '',
+      setUserApiKey: (v) => set({ userApiKey: v }),
+      userModel: '',
+      setUserModel: (v) => set({ userModel: v }),
     }),
     {
       name: 'aegis-store-v2',   // bumped: clears old persisted state
@@ -212,6 +224,8 @@ export const useAegisStore = create<AegisState>()(
         sidebarCollapsed: s.sidebarCollapsed,
         activeModule: s.activeModule,
         feedInitialized: s.feedInitialized,
+        userApiKey: s.userApiKey,
+        userModel: s.userModel,
       }),
     } as Parameters<typeof persist>[1]
   )

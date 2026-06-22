@@ -10,6 +10,39 @@
 const BASE =
   (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_API_BASE) || "";
 
+// ── BYO API key (stored in browser, sent per request as a header) ────────────
+// The store calls setUserApiKey() / setUserModel() to keep these in sync; we
+// also hydrate once from the persisted store so a page reload keeps the key.
+let _userApiKey = "";
+let _userModel = "";
+
+function _hydrateFromStore() {
+  try {
+    const raw = localStorage.getItem("aegis-store-v2");
+    if (!raw) return;
+    const s = JSON.parse(raw)?.state ?? {};
+    _userApiKey = s.userApiKey || "";
+    _userModel = s.userModel || "";
+  } catch {
+    /* ignore */
+  }
+}
+if (typeof localStorage !== "undefined") _hydrateFromStore();
+
+export function setUserApiKey(key: string) {
+  _userApiKey = key || "";
+}
+export function setUserModel(model: string) {
+  _userModel = model || "";
+}
+
+function authHeaders(): Record<string, string> {
+  const h: Record<string, string> = {};
+  if (_userApiKey) h["X-User-Api-Key"] = _userApiKey;
+  if (_userModel) h["X-User-Model"] = _userModel;
+  return h;
+}
+
 // Standard envelope returned by every bridge endpoint.
 export interface AegisMeta {
   agent: string;
@@ -37,7 +70,7 @@ export class AegisApiError extends Error {
 async function post<T = any>(path: string, body: unknown): Promise<AegisEnvelope<T>> {
   const r = await fetch(`${BASE}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(body ?? {}),
   });
   if (!r.ok) throw new AegisApiError(r.status, `${path} → ${r.status}`);
@@ -45,7 +78,7 @@ async function post<T = any>(path: string, body: unknown): Promise<AegisEnvelope
 }
 
 async function get<T = any>(path: string): Promise<AegisEnvelope<T>> {
-  const r = await fetch(`${BASE}${path}`);
+  const r = await fetch(`${BASE}${path}`, { headers: authHeaders() });
   if (!r.ok) throw new AegisApiError(r.status, `${path} → ${r.status}`);
   return (await r.json()) as AegisEnvelope<T>;
 }
@@ -66,7 +99,7 @@ async function postStream(
 ): Promise<void> {
   const r = await fetch(`${BASE}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(body ?? {}),
     signal,
   });

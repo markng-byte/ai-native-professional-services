@@ -24,6 +24,7 @@ Modules served:
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import json
 import base64
 import logging
@@ -84,6 +85,28 @@ _rate_buckets: Dict[str, deque] = defaultdict(deque)
 # Paths that never require auth / rate-limiting.
 _OPEN_PATHS = {"/api/health", "/favicon.ico"}
 
+# ---------------------------------------------------------------------------
+# Per-request BYO credentials (user-supplied API key from the browser Settings).
+# A user can paste their own Anthropic key in the AEGIS Settings panel; the
+# frontend sends it as the X-User-Api-Key header. It is held only for the life
+# of the request (contextvar), never logged or persisted server-side.
+# ---------------------------------------------------------------------------
+_user_key_ctx: contextvars.ContextVar[str] = contextvars.ContextVar("user_api_key", default="")
+_user_model_ctx: contextvars.ContextVar[str] = contextvars.ContextVar("user_model", default="")
+
+
+class UserKeyMiddleware(BaseHTTPMiddleware):
+    """Capture the per-request user-supplied AI key/model into contextvars."""
+
+    async def dispatch(self, request: Request, call_next):
+        key_token = _user_key_ctx.set((request.headers.get("X-User-Api-Key", "") or "").strip())
+        model_token = _user_model_ctx.set((request.headers.get("X-User-Model", "") or "").strip())
+        try:
+            return await call_next(request)
+        finally:
+            _user_key_ctx.reset(key_token)
+            _user_model_ctx.reset(model_token)
+
 
 class BasicAuthMiddleware(BaseHTTPMiddleware):
     """Shared-password HTTP Basic gate. No-op when DEMO_PASSWORD is unset."""
@@ -112,7 +135,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        if path.startswith("/api/") and path not in _OPEN_PATHS:
+        # Users who bring their own API key pay for their own usage — don't
+        # rate-limit them against the shared server key.
+        byo_key = bool((request.headers.get("X-User-Api-Key", "") or "").strip())
+        if path.startswith("/api/") and path not in _OPEN_PATHS and not byo_key:
             ip = (request.headers.get("x-forwarded-for", "").split(",")[0].strip()
                   or (request.client.host if request.client else "unknown"))
             now = time.time()
@@ -132,6 +158,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(BasicAuthMiddleware)
+app.add_middleware(UserKeyMiddleware)
 
 # ---------------------------------------------------------------------------
 # Core Claude caller (server-side, key never leaves backend)
@@ -140,18 +167,28 @@ _ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 _MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
 
 
+def _active_key() -> str:
+    """User-supplied key (from Settings header) takes precedence over the env key."""
+    return _user_key_ctx.get() or _ANTHROPIC_KEY
+
+
+def _active_model() -> str:
+    return _user_model_ctx.get() or _MODEL
+
+
 def _is_live() -> bool:
-    return bool(_ANTHROPIC_KEY)
+    return bool(_active_key())
 
 
 def _call_claude(system: str, user: str, max_tokens: int = 2000, sim: Optional[Any] = None) -> str:
     """Call Claude API or return simulation stub when no API key is set."""
-    if not _is_live():
-        return json.dumps(sim) if sim is not None else json.dumps({"_simulation": True, "note": "Set ANTHROPIC_API_KEY for live AI"})
+    key = _active_key()
+    if not key:
+        return json.dumps(sim) if sim is not None else json.dumps({"_simulation": True, "note": "Add your API key in Settings, or set ANTHROPIC_API_KEY, for live AI"})
     from anthropic import Anthropic
-    client = Anthropic(api_key=_ANTHROPIC_KEY)
+    client = Anthropic(api_key=key)
     msg = client.messages.create(
-        model=_MODEL,
+        model=_active_model(),
         max_tokens=max_tokens,
         system=system,
         messages=[{"role": "user", "content": user}],
@@ -174,7 +211,7 @@ def _meta(agent: str, requires_review: bool = False, sources: Optional[List] = N
         "simulation": not _is_live(),
         "requires_human_review": requires_review,
         "sources": sources or [],
-        "model": _MODEL,
+        "model": _active_model(),
         "run_id": str(uuid.uuid4()),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
@@ -192,7 +229,8 @@ def health():
     return {
         "status": "ok",
         "live_ai": _is_live(),
-        "model": _MODEL,
+        "model": _active_model(),
+        "key_source": "user" if _user_key_ctx.get() else ("server" if _ANTHROPIC_KEY else "none"),
         "graph_rag": _engine._GRAPH is not None,
         "agents": list(_engine.AGENTS.keys()),
         "timestamp": datetime.now(timezone.utc).isoformat(),
