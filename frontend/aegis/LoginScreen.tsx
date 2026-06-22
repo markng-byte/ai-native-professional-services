@@ -69,7 +69,27 @@ export default function LoginScreen() {
       name: '',
       jurisdictions: [],
       sectors: [],
+      orgData: null,
       onboardingComplete: false,
+    })
+  }
+
+  // One-tap full-access demo profile (PE partner unlocks every module + CTA)
+  const startDemo = () => {
+    setUserProfile({
+      role: 'pe_partner',
+      name: 'Alex Tan',
+      jurisdictions: ['VN', 'SG', 'EU'],
+      sectors: ['pe', 'fintech', 'crypto'],
+      orgData: {
+        name: 'Meridian Capital Partners',
+        country: 'Singapore',
+        sector: 'Private Equity / VC',
+        registrationId: '',
+        verified: false,
+        raw: {},
+      },
+      onboardingComplete: true,
     })
   }
 
@@ -242,11 +262,41 @@ export default function LoginScreen() {
         Continue →
       </button>
 
+      {/* Divider */}
       <div style={{
-        marginTop: 20, color: C.dim, fontSize: 11, textAlign: 'center',
+        display: 'flex', alignItems: 'center', gap: 12,
+        width: '100%', maxWidth: 420, margin: '20px 0 4px',
         animation: 'fadeUp 0.5s 0.5s ease both',
       }}>
-        You can switch roles anytime from your profile.
+        <div style={{ flex: 1, height: 1, background: C.border }}/>
+        <span style={{ color: C.dim, fontSize: 11 }}>or</span>
+        <div style={{ flex: 1, height: 1, background: C.border }}/>
+      </div>
+
+      {/* One-tap demo */}
+      <button
+        onClick={startDemo}
+        style={{
+          width: '100%', maxWidth: 420,
+          padding: '14px',
+          borderRadius: 12,
+          border: `1.5px solid ${C.gold}40`,
+          background: `${C.gold}10`,
+          color: C.gold,
+          fontSize: 14, fontWeight: 600,
+          cursor: 'pointer',
+          transition: 'all 0.18s ease',
+          animation: 'fadeUp 0.5s 0.55s ease both',
+        }}
+      >
+        ★ Explore full demo — Alex Tan, Meridian Capital
+      </button>
+
+      <div style={{
+        marginTop: 16, color: C.dim, fontSize: 11, textAlign: 'center',
+        animation: 'fadeUp 0.5s 0.6s ease both',
+      }}>
+        Full demo loads a PE Managing Partner with every module unlocked.
       </div>
     </div>
   )
