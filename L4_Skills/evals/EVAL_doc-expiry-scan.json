@@ -62,6 +62,20 @@
       "input": {"date_threshold_days": 60},
       "expected_output": {"all_have_assigned_officer": true},
       "pass_criteria": "Every result has a non-null assigned_officer field"
+    },
+    {
+      "id": "TC-DE-009",
+      "description": "Wide 365-day horizon — surfaces multiple upcoming expiries",
+      "input": {"date_threshold_days": 365},
+      "expected_output": {"total_expiring_min": 3},
+      "pass_criteria": "A one-year horizon surfaces at least 3 expiring documents"
+    },
+    {
+      "id": "TC-DE-010",
+      "description": "Combined filter — passports within 45 days across all jurisdictions",
+      "input": {"date_threshold_days": 45, "doc_types": ["PASSPORT"]},
+      "expected_output": {"all_results_doc_type": "PASSPORT", "sorted_ascending_by_days": true},
+      "pass_criteria": "Every result is a PASSPORT and results are ordered most-urgent first"
     }
   ]
 }

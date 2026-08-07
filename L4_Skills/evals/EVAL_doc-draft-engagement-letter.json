@@ -48,6 +48,34 @@
       "input": {"client_id": "CLT-MULTI-ENTITY", "service_type": "COMPANY_FORMATION", "mandate_details": {"jurisdiction": "SG"}},
       "expected_output": {"draft_contains_sg_entity": true},
       "pass_criteria": "Draft uses the Singapore entity name — not the BVI entity"
+    },
+    {
+      "id": "TC-EL-007",
+      "description": "Standard accounting engagement with a complete fee",
+      "input": {"client_id": "CLT-TEST-001", "service_type": "ACCOUNTING", "mandate_details": {"jurisdiction": "VG", "fee": 2000, "currency": "USD"}},
+      "expected_output": {"format": "DOCX", "missing_fields_count": 0, "requires_human_review": true},
+      "pass_criteria": "Complete accounting engagement letter with no missing fields"
+    },
+    {
+      "id": "TC-EL-008",
+      "description": "Second client with a populated fee — no missing fields",
+      "input": {"client_id": "CLT-TEST-002", "service_type": "REGISTERED_AGENT", "mandate_details": {"jurisdiction": "SG", "fee": 3000}},
+      "expected_output": {"missing_fields_count": 0, "requires_human_review": true},
+      "pass_criteria": "Fee supplied — draft has no missing placeholders"
+    },
+    {
+      "id": "TC-EL-009",
+      "description": "Multi-entity client, BVI mandate — must use the BVI entity and cite sources",
+      "input": {"client_id": "CLT-MULTI-ENTITY", "service_type": "COMPANY_FORMATION", "mandate_details": {"jurisdiction": "VG", "fee": 4000}},
+      "expected_output": {"format": "DOCX", "data_sources_used_min": 1, "requires_human_review": true},
+      "pass_criteria": "Correct entity selected for the BVI mandate with data sources cited"
+    },
+    {
+      "id": "TC-EL-010",
+      "description": "Trust administration engagement is a supported template",
+      "input": {"client_id": "CLT-TEST-001", "service_type": "TRUST_ADMIN", "mandate_details": {"jurisdiction": "KY", "fee": 7500}},
+      "expected_output": {"format": "DOCX", "missing_fields_count": 0},
+      "pass_criteria": "TRUST_ADMIN resolves to a template and produces a complete draft"
     }
   ]
 }
