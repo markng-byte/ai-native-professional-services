@@ -62,6 +62,20 @@
       "input": {"new_client_profile": {"entity_name": "Test Audit Ltd", "jurisdiction": "VG", "directors": [{"full_name": "Audit Test Person"}]}},
       "expected_output": {"audit_log_ref_not_null": true, "requires_human_review": true},
       "pass_criteria": "audit_log_ref present and requires_human_review is always true"
+    },
+    {
+      "id": "TC-CC-009",
+      "description": "Shared registered address — director shares an address with an existing client",
+      "input": {"new_client_profile": {"entity_name": "Test Address Ltd", "jurisdiction": "VG", "directors": [{"individual_id": "IND-TEST-004"}]}},
+      "expected_output": {"conflict_found": true, "conflicts": [{"conflict_type": "SHARED_ADDRESS"}], "recommendation": "REVIEW"},
+      "pass_criteria": "Detects shared-address conflict and recommends REVIEW"
+    },
+    {
+      "id": "TC-CC-010",
+      "description": "Mixed roster — one overlapping director plus one clean director; all individuals must be checked",
+      "input": {"new_client_profile": {"entity_name": "Test Mixed Ltd", "jurisdiction": "SG", "directors": [{"individual_id": "IND-TEST-001"}, {"full_name": "Clean Unique Person 010"}]}},
+      "expected_output": {"conflict_found": true, "conflicts": [{"conflict_type": "DIRECTORSHIP_OVERLAP"}], "total_conflicts_min": 1},
+      "pass_criteria": "Every individual is screened — the overlapping director is flagged even when another is clean"
     }
   ]
 }
