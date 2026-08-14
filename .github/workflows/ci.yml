@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  pull_request:
+
+jobs:
+  build-and-test:
+    name: Build & test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---- Frontend build ----
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install frontend deps
+        working-directory: frontend/aegis
+        run: npm install
+
+      - name: Build frontend
+        working-directory: frontend/aegis
+        run: npm run build
+
+      # ---- Backend tests + evals ----
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python deps
+        run: pip install -r requirements.txt
+
+      - name: Graph tests
+        run: python tests/test_graph.py
+
+      - name: Eval suite
+        run: python run_evals.py
