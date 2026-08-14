@@ -4,6 +4,28 @@
 
 ---
 
+## 🛡️ AEGIS — Strategic Intelligence Operating System
+
+The **product** built on this architecture: an AI-native strategic intelligence platform for Vietnam & SEA, with 4 modules (REGO / VRIT / EIT1 / EIT2) on a single FastAPI bridge.
+
+| Tài liệu | Nội dung |
+|---|---|
+| [`PRD.md`](PRD.md) | Product Requirements — vision, modules, API, BYO key, security, changelog, roadmap |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Kiến trúc L1–L6, request flow, pipeline SSE, event bus, simulation mode |
+| [`docs/STACK.md`](docs/STACK.md) | Tech stack, cấu trúc monorepo, quickstart, biến môi trường |
+| [`DEPLOY.md`](DEPLOY.md) | Triển khai single-host (Docker · Render/Railway) |
+
+```bash
+# Quickstart (single host)
+pip install -r requirements.txt
+cd frontend/aegis && npm install && npm run build && cd ../..
+uvicorn src.api_bridge:app --host 0.0.0.0 --port 8000   # → http://localhost:8000
+```
+
+Không cần key → chạy Simulation Mode. Hoặc dán BYO key trong ⚙ Settings.
+
+---
+
 ## What This Is
 
 This repository contains the **full technical blueprint** for transforming a traditional professional services firm (corporate formation, compliance, banking introductions) into an AI-native operating system. Every document is designed to be machine-readable by AI agents and human-reviewable by stakeholders.
@@ -90,6 +112,13 @@ real Clients and Mandates into the graph. Run the graph tests with
 
 ```
 .
+├── PRD.md                            # AEGIS Product Requirements Document
+├── docs/                             # AEGIS architecture & stack docs
+│   ├── ARCHITECTURE.md
+│   └── STACK.md
+├── frontend/aegis/                   # L6 — AEGIS React shell (4 modules + feed)
+├── src/                              # L5–L1 — api_bridge, agents, engine, graph
+│
 ├── L1_Knowledge_Foundation/          # GraphRAG — the critical base layer
 │   ├── GRAPH_SCHEMA.md               #   Entity types, relationships, query patterns
 │   ├── CORPUS_INDEX.md               #   Document source inventory (10 sources)
@@ -119,7 +148,7 @@ real Clients and Mandates into the graph. Run the graph tests with
 │   ├── AGENT_SPEC_Operations.md      #   Internal alerts, CRM sync
 │   └── AGENT_SPEC_ExecutiveAssistant.md # Command Center for human executive
 │
-├── L6_Interaction/                   # UX specs per channel (TODO)
+├── L6_Interaction/                   # UX specs per channel
 │
 ├── governance/                       # Cross-cutting policies
 │   └── GOVERNANCE.md                #   Approval matrix, change management, incident response, audit, data retention
@@ -178,6 +207,8 @@ real Clients and Mandates into the graph. Run the graph tests with
 | CRM | Salesforce (MCP Server) |
 | Document Parsing | unstructured.io / Apache Tika |
 | NER / Extraction | LLM-based (structured output) |
+
+> **AEGIS runtime stack** (the shipped product) is documented separately in [`docs/STACK.md`](docs/STACK.md): React 19 · Vite 8 · Zustand · FastAPI · Anthropic Claude.
 
 ---
 
