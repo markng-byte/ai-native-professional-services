@@ -31,3 +31,7 @@ package-lock.json
 *.pem
 credentials.json
 secrets.json
+
+# AEGIS frontend build artifacts
+frontend/aegis/node_modules/
+frontend/aegis/dist/

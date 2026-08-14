@@ -1,0 +1,47 @@
+{
+  "_meta": {
+    "description": "Synthetic seed graph for the GraphRAG foundation (dev/demo). Conforms to L1_Knowledge_Foundation/GRAPH_SCHEMA.md. Replace with real Salesforce/registry ingestion via src/graph/ingestion/.",
+    "schema_version": "1.0",
+    "generated": "2026-06-20"
+  },
+  "nodes": [
+    {"id": "JUR-VG", "label": "Jurisdiction", "jurisdiction_code": "VG", "full_name": "British Virgin Islands", "legal_system_type": "Common law", "FATF_status": "Compliant", "substance_requirements": "Light (ESA)", "formation_cost": "$2,500", "corporate_tax": "0% corporate", "timeline": "3-5 days", "banking_access": "Moderate"},
+    {"id": "JUR-KY", "label": "Jurisdiction", "jurisdiction_code": "KY", "full_name": "Cayman Islands", "legal_system_type": "Common law", "FATF_status": "Compliant", "substance_requirements": "Light (ESA)", "formation_cost": "$4,500", "corporate_tax": "0% corporate", "timeline": "5-7 days", "banking_access": "Strong"},
+    {"id": "JUR-SG", "label": "Jurisdiction", "jurisdiction_code": "SG", "full_name": "Singapore", "legal_system_type": "Common law", "FATF_status": "Compliant", "substance_requirements": "High", "formation_cost": "$3,000", "corporate_tax": "17% corporate", "timeline": "1-2 days", "banking_access": "Excellent"},
+    {"id": "JUR-HK", "label": "Jurisdiction", "jurisdiction_code": "HK", "full_name": "Hong Kong", "legal_system_type": "Common law", "FATF_status": "Compliant", "substance_requirements": "Medium", "formation_cost": "$2,800", "corporate_tax": "16.5% corporate", "timeline": "2-4 days", "banking_access": "Strong"},
+    {"id": "JUR-US-DE", "label": "Jurisdiction", "jurisdiction_code": "US-DE", "full_name": "Delaware (USA)", "legal_system_type": "Common law", "FATF_status": "Compliant", "substance_requirements": "Low", "formation_cost": "$1,200", "corporate_tax": "Pass-through / 21%", "timeline": "1-3 days", "banking_access": "Excellent"},
+    {"id": "JUR-AE", "label": "Jurisdiction", "jurisdiction_code": "AE", "full_name": "United Arab Emirates", "legal_system_type": "Civil law", "FATF_status": "Monitored", "substance_requirements": "Medium", "formation_cost": "$5,500", "corporate_tax": "9% corporate", "timeline": "5-10 days", "banking_access": "Moderate"},
+    {"id": "JUR-JE", "label": "Jurisdiction", "jurisdiction_code": "JE", "full_name": "Jersey", "legal_system_type": "Common law", "FATF_status": "Compliant", "substance_requirements": "Medium", "formation_cost": "$4,000", "corporate_tax": "0% corporate", "timeline": "5-7 days", "banking_access": "Strong"},
+
+    {"id": "CLI-ATLAS001", "label": "Client", "client_id": "CLI-ATLAS001", "full_legal_name": "Project Atlas Group", "incorporation_date": "2021-03-15", "jurisdiction_of_incorp": "KY", "risk_rating": "MEDIUM"},
+    {"id": "LE-ATLASHLDG", "label": "Legal_Entity", "entity_id": "LE-ATLASHLDG", "registered_name": "Atlas Holdings Ltd", "entity_type": "Ltd", "registered_number": "KY-318841", "jurisdiction_code": "KY"},
+    {"id": "LE-MERIDIAN", "label": "Legal_Entity", "entity_id": "LE-MERIDIAN", "registered_name": "Meridian Trust", "entity_type": "Foundation", "registered_number": "JE-90122", "jurisdiction_code": "JE"},
+    {"id": "IND-JDOE", "label": "Individual", "individual_id": "IND-JDOE", "full_name": "John Doe", "nationality": "GB", "date_of_birth": "1972-04-11", "PEP_flag": true, "sanction_flag": false},
+    {"id": "IND-ASMITH", "label": "Individual", "individual_id": "IND-ASMITH", "full_name": "Anna Smith", "nationality": "SG", "date_of_birth": "1985-09-02", "PEP_flag": false, "sanction_flag": false},
+
+    {"id": "CLI-ORION", "label": "Client", "client_id": "CLI-ORION", "full_legal_name": "Orion Capital", "incorporation_date": "2019-05-01", "jurisdiction_of_incorp": "VG", "risk_rating": "LOW"},
+    {"id": "CLI-NOVA", "label": "Client", "client_id": "CLI-NOVA", "full_legal_name": "Nova Trust", "incorporation_date": "2020-11-20", "jurisdiction_of_incorp": "VG", "risk_rating": "MEDIUM"},
+    {"id": "CLI-VERTEX", "label": "Client", "client_id": "CLI-VERTEX", "full_legal_name": "Vertex Pte", "incorporation_date": "2022-02-10", "jurisdiction_of_incorp": "SG", "risk_rating": "LOW"},
+    {"id": "CLI-HELIOS", "label": "Client", "client_id": "CLI-HELIOS", "full_legal_name": "Helios Group", "incorporation_date": "2018-08-30", "jurisdiction_of_incorp": "KY", "risk_rating": "LOW"},
+
+    {"id": "SM-ORION", "label": "Service_Mandate", "mandate_id": "SM-ORION", "service_type": "Annual renewal", "status": "active", "renewal_date": "2026-07-15", "client_name": "Orion Capital", "jurisdiction_code": "VG", "assigned_officer": "A. Smith"},
+    {"id": "SM-NOVA", "label": "Service_Mandate", "mandate_id": "SM-NOVA", "service_type": "KYC refresh", "status": "active", "renewal_date": "2026-06-28", "client_name": "Nova Trust", "jurisdiction_code": "VG", "assigned_officer": "A. Smith"},
+    {"id": "SM-VERTEX", "label": "Service_Mandate", "mandate_id": "SM-VERTEX", "service_type": "Economic-substance filing", "status": "active", "renewal_date": "2026-07-30", "client_name": "Vertex Pte", "jurisdiction_code": "SG", "assigned_officer": "M. Ng"},
+    {"id": "SM-HELIOS", "label": "Service_Mandate", "mandate_id": "SM-HELIOS", "service_type": "Annual return", "status": "active", "renewal_date": "2026-08-12", "client_name": "Helios Group", "jurisdiction_code": "KY", "assigned_officer": "M. Ng"}
+  ],
+  "edges": [
+    {"from": "IND-JDOE", "to": "LE-ATLASHLDG", "type": "OWNS", "ownership_pct": 60, "effective_date": "2021-03-15"},
+    {"from": "LE-MERIDIAN", "to": "LE-ATLASHLDG", "type": "OWNS", "ownership_pct": 40, "effective_date": "2021-03-15"},
+    {"from": "IND-JDOE", "to": "LE-MERIDIAN", "type": "OWNS", "ownership_pct": 100, "effective_date": "2020-01-10"},
+    {"from": "CLI-ATLAS001", "to": "LE-ATLASHLDG", "type": "PRIMARY_ENTITY", "effective_date": "2021-03-15"},
+    {"from": "IND-JDOE", "to": "LE-ATLASHLDG", "type": "IS_DIRECTOR_OF", "role": "director", "appointment_date": "2021-03-15"},
+    {"from": "IND-ASMITH", "to": "LE-ATLASHLDG", "type": "IS_DIRECTOR_OF", "role": "secretary", "appointment_date": "2021-03-15"},
+    {"from": "LE-ATLASHLDG", "to": "JUR-KY", "type": "INCORPORATED_IN", "incorporation_date": "2021-03-15", "registration_number": "KY-318841"},
+    {"from": "LE-MERIDIAN", "to": "JUR-JE", "type": "INCORPORATED_IN", "incorporation_date": "2020-01-10", "registration_number": "JE-90122"},
+
+    {"from": "CLI-ORION", "to": "SM-ORION", "type": "HAS_MANDATE", "signed_date": "2025-07-15"},
+    {"from": "CLI-NOVA", "to": "SM-NOVA", "type": "HAS_MANDATE", "signed_date": "2025-06-28"},
+    {"from": "CLI-VERTEX", "to": "SM-VERTEX", "type": "HAS_MANDATE", "signed_date": "2025-07-30"},
+    {"from": "CLI-HELIOS", "to": "SM-HELIOS", "type": "HAS_MANDATE", "signed_date": "2025-08-12"}
+  ]
+}

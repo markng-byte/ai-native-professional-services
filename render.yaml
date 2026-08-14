@@ -1,0 +1,20 @@
+# Render blueprint — single Docker web service hosting AEGIS (UI + API).
+# Deploy: push to GitHub, then on render.com → New → Blueprint → pick this repo.
+# Set the two `sync: false` secrets in the Render dashboard after first deploy.
+services:
+  - type: web
+    name: aegis-demo
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: ANTHROPIC_API_KEY        # your Claude key (server-side only)
+        sync: false
+      - key: DEMO_PASSWORD            # shared password gate for the public link
+        sync: false
+      - key: DEMO_USER
+        value: demo
+      - key: RATE_LIMIT_PER_HOUR      # AI calls per visitor IP per hour
+        value: "60"
+      - key: CLAUDE_MODEL
+        value: claude-sonnet-4-6
