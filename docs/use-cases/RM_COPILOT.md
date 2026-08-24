@@ -1,6 +1,7 @@
 # RM Sales Co-pilot — Use Case Definition (v1)
 
-> **Status:** Phase 0 draft, awaiting human approval · **Branch:** `feature/rm-copilot`
+> **Status:** Phase 1 delivered (domain model + Tier 1 capability layer + Layer 2 contract eval).
+> Phases 2+ awaiting approval. · **Branch:** `feature/rm-copilot` · **PR:** #4
 > **Thesis:** firmOS can safely combine CRM data, domain knowledge, deterministic skills,
 > business tools and agent reasoning into **governed, grounded, auditable decision support** for an
 > internal Relationship Manager.
@@ -86,6 +87,9 @@ of: `unknown` · `unavailable` · `requires_rm_input` · `requires_specialist_es
 
 `search_client` · `get_rm_client_context` · `get_opportunity_context` · `get_client_history` ·
 `get_open_tasks` · `get_client_engagements` · `get_client_documents` · `get_renewal_status`
+
+**Status: ✅ implemented in Phase 1** — `src/capabilities/tools.py`, registry `CAPABILITIES`.
+All eight are deterministic, fixture-backed, actor-authorized and envelope-returning.
 
 **Contract rule:** these are **business capabilities**, not CRUD. No `salesforce.query()` is ever
 exposed to an agent. The contract must survive a Salesforce object-model change:
