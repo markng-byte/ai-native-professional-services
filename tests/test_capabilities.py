@@ -54,7 +54,13 @@ def call(name: str, **payload):
 
 class TestRegistry(unittest.TestCase):
     def test_all_capabilities_have_a_result_contract(self):
-        self.assertEqual(set(CAPABILITIES), set(RESULT_CONTRACTS))
+        # RESULT_CONTRACTS is a *shared* registry: Tier 2 RM workflows register
+        # their contracts into it so one validate_envelope serves every tier
+        # (and, later, Layer 4 runtime validation). The invariant this test
+        # protects is therefore "every Tier 1 capability has a contract", not
+        # "the registry contains only Tier 1 entries".
+        missing = set(CAPABILITIES) - set(RESULT_CONTRACTS)
+        self.assertEqual(missing, set(), f"capabilities without a contract: {missing}")
 
     def test_expected_tier1_capabilities_present(self):
         expected = {

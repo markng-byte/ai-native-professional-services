@@ -30,5 +30,5 @@ jobs:
       - name: Layer 1 — L4 skill regression eval gate
         run: python run_evals.py
 
-      - name: Layer 2 — capability tool contract eval
+      - name: Layers 2 & 3 — capability contracts and RM workflow scenarios
         run: python -m unittest discover -s tests -v

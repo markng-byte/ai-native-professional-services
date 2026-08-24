@@ -1,0 +1,163 @@
+{
+  "suite": "RM Co-pilot — Layer 3 agent workflow evaluation",
+  "description": "The ten realistic RM scenarios from the master prompt (§13 Layer 3). Each case runs a Tier 2 workflow against fixture CRM state and asserts on the structured result using the shared assertion matcher (src/evals/matcher.py). Declarative on purpose so the scenarios stay reviewable by non-engineers.",
+  "actors": {
+    "RM_SARAH": {"rm_id": "RM-001"},
+    "RM_DAVID": {"rm_id": "RM-002"}
+  },
+  "scenarios": [
+    {
+      "id": "L3-01",
+      "name": "New lead with incomplete information",
+      "rationale": "An unqualified inbound enquiry must be qualified, not quoted. The co-pilot must refuse to speculate and must name what is missing.",
+      "workflow": "rm-next-best-action",
+      "actor": "RM_SARAH",
+      "input": {"client_id": "CLT-007823"},
+      "expected_output": {
+        "priority_not": "LOW",
+        "required_information_not_empty": true,
+        "suggested_next_question_not_null": true,
+        "evidence_not_empty": true
+      }
+    },
+    {
+      "id": "L3-02",
+      "name": "Client summary surfaces gaps rather than inventing them",
+      "rationale": "§11 — unknowns are reported explicitly.",
+      "workflow": "rm-client-summary",
+      "actor": "RM_SARAH",
+      "input": {"client_id": "CLT-007823"},
+      "expected_output": {
+        "missing_information_not_empty": true,
+        "client_summary_not_null": true,
+        "sources_not_empty": true
+      }
+    },
+    {
+      "id": "L3-03",
+      "name": "Stalled opportunity is detected and escalated",
+      "rationale": "OPP-1002 has sat 64 days in a 21-day SLA stage.",
+      "workflow": "rm-opportunity-review",
+      "actor": "RM_SARAH",
+      "input": {"opportunity_id": "OPP-1002"},
+      "expected_output": {
+        "conversion_risk": "HIGH",
+        "stage_assessment_contains": "STALLED",
+        "recommended_actions_not_empty": true
+      }
+    },
+    {
+      "id": "L3-04",
+      "name": "Overdue follow-up is prioritised",
+      "rationale": "Overdue commitments to the client outrank routine pipeline work.",
+      "workflow": "rm-next-best-action",
+      "actor": "RM_SARAH",
+      "input": {"client_id": "CLT-002891"},
+      "expected_output": {
+        "priority_not": "LOW",
+        "evidence_not_empty": true,
+        "other_signals_not_empty": true
+      }
+    },
+    {
+      "id": "L3-05",
+      "name": "Missing documents are surfaced as open items",
+      "rationale": "CLT-007823 has two MISSING documents on file.",
+      "workflow": "rm-client-summary",
+      "actor": "RM_SARAH",
+      "input": {"client_id": "CLT-007823"},
+      "expected_output": {
+        "open_items_not_empty": true
+      }
+    },
+    {
+      "id": "L3-06",
+      "name": "Cross-sell: active client with known needs",
+      "rationale": "Existing engagements establish what the firm already does for the client, which is the basis for a cross-sell conversation.",
+      "workflow": "rm-client-summary",
+      "actor": "RM_SARAH",
+      "input": {"client_id": "CLT-001234"},
+      "expected_output": {
+        "known_needs_not_empty": true,
+        "opportunity_summary_not_empty": true
+      }
+    },
+    {
+      "id": "L3-07",
+      "name": "High-value opportunity with weak recent activity",
+      "rationale": "OPP-1002 is USD 95,000 with no contact for 38 days — must not be treated as routine.",
+      "workflow": "rm-next-best-action",
+      "actor": "RM_SARAH",
+      "input": {"client_id": "CLT-002891"},
+      "expected_output": {
+        "priority_not": "LOW",
+        "reason_not_null": true
+      }
+    },
+    {
+      "id": "L3-08",
+      "name": "Conflicting CRM information is reconciled, not trusted",
+      "rationale": "OPP-1002 is still open at NEGOTIATION while its expected close date passed 9 days ago. The record contradicts itself; the co-pilot must flag it rather than forecast from it.",
+      "workflow": "rm-opportunity-review",
+      "actor": "RM_SARAH",
+      "input": {"opportunity_id": "OPP-1002"},
+      "expected_output": {
+        "recommended_actions_not_empty": true,
+        "missing_actions_not_empty": true
+      }
+    },
+    {
+      "id": "L3-09",
+      "name": "Insufficient information blocks commercial recommendation",
+      "rationale": "An opportunity with no value, service type or close date cannot support a priced proposal.",
+      "workflow": "rm-opportunity-review",
+      "actor": "RM_SARAH",
+      "input": {"opportunity_id": "OPP-1003"},
+      "expected_output": {
+        "missing_actions_not_empty": true,
+        "conversion_risk": "LOW"
+      }
+    },
+    {
+      "id": "L3-10",
+      "name": "Escalation required — open compliance flag blocks progression",
+      "rationale": "CLT-009001 carries an open compliance flag. Policy blocks client-facing progression until cleared; the recommendation must be escalation at CRITICAL priority.",
+      "workflow": "rm-next-best-action",
+      "actor": "RM_DAVID",
+      "input": {"client_id": "CLT-009001"},
+      "expected_output": {
+        "priority": "CRITICAL",
+        "signal_code": "COMPLIANCE_FLAG_OPEN",
+        "recommended_action_contains": "Escalate",
+        "evidence_not_empty": true
+      }
+    },
+    {
+      "id": "L3-11",
+      "name": "Draft follow-up is always human-gated and never sent",
+      "rationale": "Governance rows 4/5/7 — the agent drafts, the human reviews and sends.",
+      "workflow": "rm-followup-draft",
+      "actor": "RM_SARAH",
+      "input": {"client_id": "CLT-002891"},
+      "expected_output": {
+        "requires_human_review": true,
+        "delivery_status": "DRAFT_NOT_SENT",
+        "approval_state": "DRAFTED",
+        "supporting_facts_not_empty": true,
+        "draft_contains": "NOT SENT"
+      }
+    },
+    {
+      "id": "L3-12",
+      "name": "Healthy opportunity is not falsely alarmed",
+      "rationale": "Guards against a rules engine that flags everything — a within-SLA opportunity must read LOW.",
+      "workflow": "rm-opportunity-review",
+      "actor": "RM_SARAH",
+      "input": {"opportunity_id": "OPP-1001"},
+      "expected_output": {
+        "conversion_risk": "LOW",
+        "stage_assessment_contains": "HEALTHY"
+      }
+    }
+  ]
+}
