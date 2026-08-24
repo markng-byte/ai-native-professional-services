@@ -1,7 +1,8 @@
 # RM Sales Co-pilot — Use Case Definition (v1)
 
-> **Status:** Phase 1 delivered (domain model + Tier 1 capability layer + Layer 2 contract eval).
-> Phases 2+ awaiting approval. · **Branch:** `feature/rm-copilot` · **PR:** #4
+> **Status:** Phase 2 delivered (Tier 1 capabilities + Tier 2 RM workflows + Layer 2/3 evals).
+> Phase 3 (runtime validation + HITL enforcement) awaiting approval.
+> · **Branch:** `feature/rm-copilot` · **PR:** #4
 > **Thesis:** firmOS can safely combine CRM data, domain knowledge, deterministic skills,
 > business tools and agent reasoning into **governed, grounded, auditable decision support** for an
 > internal Relationship Manager.
@@ -113,6 +114,13 @@ Build order reflects thesis value, not the order listed in the prompt.
 | 2 | `rm-next-best-action` | `recommended_action`, `reason`, `priority`, `required_information`, `suggested_next_question` |
 | 3 | `rm-opportunity-review` | `stage_assessment`, `aging`, `conversion_risk`, `missing_actions`, `recommended_actions` |
 | 4 | `rm-followup-draft` | `draft`, `supporting_facts`, `requires_human_review` |
+
+**Status: ✅ implemented in Phase 2** — `src/rm/workflows.py`, registry `RM_WORKFLOWS`.
+Recommendations come from the deterministic rule engine in `src/rm/heuristics.py`; drafts are
+rendered from templates in `src/rm/drafting.py`. No LLM originates any fact or judgement.
+Severity ordering is compliance-first: an open compliance flag or expired KYC document outranks
+commercial pressure, and non-selected signals are still returned as `other_signals` so nothing is
+hidden from the RM.
 
 > **Open decision D4:** these are specified as **deterministic heuristics emitting structured
 > evidence** (so they remain Layer-1 gate-able), with optional non-authoritative LLM narration.
