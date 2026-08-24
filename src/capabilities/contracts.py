@@ -143,6 +143,20 @@ RESULT_CONTRACTS: Dict[str, Dict[str, str]] = {
                            "next_renewal_in_days": "int?", "urgent_count": "int"},
 }
 
+
+def register_contracts(mapping: Dict[str, Dict[str, str]]) -> None:
+    """Register result contracts for a higher tier (e.g. Tier 2 RM workflows).
+
+    Keeps a *single* ``validate_envelope`` implementation shared by the Layer 2
+    contract eval and the future Layer 4 runtime validator, rather than forking
+    a second validator per tier. Registration is explicit (called from
+    :mod:`rm`), not implicit, so the contract set is always traceable.
+    """
+    overlap = set(mapping) & set(RESULT_CONTRACTS)
+    if overlap:
+        raise ValueError(f"contract names already registered: {sorted(overlap)}")
+    RESULT_CONTRACTS.update(mapping)
+
 # Fields every envelope must carry, regardless of capability.
 _ENVELOPE_FIELDS = ("ok", "capability", "correlation_id", "result", "error", "audit")
 _AUDIT_FIELDS = (
