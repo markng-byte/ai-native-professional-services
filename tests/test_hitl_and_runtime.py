@@ -100,10 +100,27 @@ class TestApprovalStateMachine(unittest.TestCase):
 
     def test_event_trail_is_append_only(self):
         rec = self.store.submit(draft(), submitted_by="RM-001")
-        self.store.decide(rec.approval_id, decision=STATE_APPROVED,
-                          reviewer_id="RM-001", reviewer_role=ROLE_RM)
-        events = [e["event"] for e in rec.events]
+        decided = self.store.decide(rec.approval_id, decision=STATE_APPROVED,
+                                    reviewer_id="RM-001", reviewer_role=ROLE_RM)
+        events = [e["event"] for e in decided.events]
         self.assertEqual(events, ["SUBMITTED", STATE_APPROVED])
+        # Re-reading gives the same trail — the record is not a live handle.
+        self.assertEqual([e["event"] for e in self.store.get(rec.approval_id).events],
+                         ["SUBMITTED", STATE_APPROVED])
+
+    def test_returned_records_are_snapshots_not_live_handles(self):
+        """A record read before a decision must not mutate underneath the caller.
+
+        The in-memory store previously handed back the live object, so an old
+        reference silently gained new events. With durable storage a record is a
+        point-in-time snapshot; callers re-read to see changes. Pinned here so
+        the semantics are deliberate rather than incidental.
+        """
+        stale = self.store.submit(draft(), submitted_by="RM-001")
+        self.store.decide(stale.approval_id, decision=STATE_APPROVED,
+                          reviewer_id="RM-001", reviewer_role=ROLE_RM)
+        self.assertEqual(stale.state, STATE_PENDING_REVIEW)
+        self.assertEqual(self.store.state_of(stale.approval_id), STATE_APPROVED)
 
     def test_governance_record_holds_no_document_body(self):
         """§22 — identifiers only; the drafted text is not copied into governance."""

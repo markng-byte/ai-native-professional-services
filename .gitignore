@@ -22,6 +22,12 @@ venv/
 *.log
 *.bak
 
+# Durable approval store (local; approvals are audit records — do not commit)
+*.db
+*.db-wal
+*.db-shm
+approvals/
+
 # Node (if added later)
 node_modules/
 package-lock.json
