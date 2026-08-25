@@ -148,3 +148,27 @@ class RMSession:
 
     def pending_approvals(self) -> List[Dict]:
         return [r.as_dict() for r in self.store.pending()]
+
+    # ---- storage transparency --------------------------------------------
+
+    def storage_notice(self) -> Dict:
+        """Whether approvals will survive a restart, in words a reviewer can act on.
+
+        A reviewer is being asked to make a governance decision that
+        ``GOVERNANCE.md`` §5.1 says must be retained for seven years. If the
+        store is in-memory, that decision disappears when the process stops —
+        so the surface says so rather than letting the reviewer assume
+        otherwise.
+        """
+        durable = self.store.durable
+        return {
+            "durable": durable,
+            "backend": self.store.backend,
+            "message": (
+                f"Approvals are recorded durably ({self.store.backend})."
+                if durable else
+                "⚠️ Approvals are held in memory and will be lost when this "
+                "process restarts. Set FIRMOS_APPROVAL_DB to retain them as "
+                "audit records."
+            ),
+        }

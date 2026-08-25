@@ -484,6 +484,12 @@ def render_rm_copilot():
 
             state = draft["approval_state"]
             st.markdown(f"**Approval state:** `{state}`")
+
+            storage = session.storage_notice()
+            if storage["durable"]:
+                st.caption(storage["message"])
+            else:
+                st.warning(storage["message"])
             if draft["gate_status"] == "BLOCKED":
                 for reason in draft["blocked_reasons"]:
                     st.warning(f"Delivery blocked — {reason}")
