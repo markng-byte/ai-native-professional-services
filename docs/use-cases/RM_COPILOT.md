@@ -1,7 +1,7 @@
 # RM Sales Co-pilot — Use Case Definition (v1)
 
-> **Status:** Phase 2 delivered (Tier 1 capabilities + Tier 2 RM workflows + Layer 2/3 evals).
-> Phase 3 (runtime validation + HITL enforcement) awaiting approval.
+> **Status:** Phase 3 delivered — capabilities, RM workflows, Layer 2/3/4 evaluation, enforced
+> HITL, and single-source-of-truth refactor. Phase 4 (Salesforce sandbox adapter) awaiting approval.
 > · **Branch:** `feature/rm-copilot` · **PR:** #4
 > **Thesis:** firmOS can safely combine CRM data, domain knowledge, deterministic skills,
 > business tools and agent reasoning into **governed, grounded, auditable decision support** for an
@@ -147,9 +147,9 @@ agent guesses result                                              ❌
 | Layer | Scope | Status |
 |---|---|---|
 | **L1 Regression** | Existing 9 skills + new RM workflow logic, fixed fixtures, CI | ✅ exists (94/94) — **must stay green** |
-| **L2 Tool contract** | Schema, input validation, authorization, output contract, errors, correlation_id, audit ref | 🔲 new |
-| **L3 Agent workflow** | The 10 RM scenarios (new lead w/ incomplete info; new-jurisdiction interest; stalled opp; overdue follow-up; missing docs; cross-sell; high-value + weak activity; conflicting CRM info; insufficient info; escalation-required) | 🔲 new |
-| **L4 Runtime validation** | Live output validated pre-delivery (shares `matcher.py` with L2) | 🔲 new |
+| **L2 Tool contract** | Schema, input validation, authorization, output contract, errors, correlation_id, audit ref | ✅ `tests/test_capabilities.py` |
+| **L3 Agent workflow** | The 10 RM scenarios (new lead w/ incomplete info; new-jurisdiction interest; stalled opp; overdue follow-up; missing docs; cross-sell; high-value + weak activity; conflicting CRM info; insufficient info; escalation-required) | ✅ `tests/rm_workflow_scenarios.json` |
+| **L4 Runtime validation** | Live output validated pre-delivery; reuses `validate_envelope` verbatim | ✅ `src/validation/runtime.py` |
 | **L5 Human RM review** | Actual usefulness | ⏭ pilot |
 
 **Protected:** L1 semantics. No eval deletion, threshold weakening, matcher-semantics change to
@@ -160,8 +160,13 @@ approval (§5, §23.3).
 
 ## 9. Governance & audit
 
-- **HITL:** `requires_human_review` is currently only a **returned flag** — v1 must make it an
-  enforced stop (`DRAFTED → PENDING_REVIEW → APPROVED / REJECTED`). Per §27: **flag ≠ enforced HITL**.
+- **HITL: ✅ enforced in Phase 3.** `requires_human_review` is no longer a bare flag. The delivery
+  gate (`src/validation/runtime.py`) refuses to deliver any artefact requiring review unless the
+  approval store (`src/hitl/approvals.py`) holds an `APPROVED` decision. The state machine is
+  `DRAFTED → PENDING_REVIEW → APPROVED / REJECTED`; terminal states are final, rejections require a
+  justification, and approver **roles come from the governance approval matrix** — a draft triggered
+  by a compliance signal escalates to the Compliance Officer and cannot be approved by the
+  requesting RM. The gate **fails closed**: approval does not excuse a contract violation.
 - **Audit record fields** follow `governance/GOVERNANCE.md` §5.1: `correlation_id`, actor identity,
   runtime identity, client/opportunity id, tool, request/result status, authorization result,
   audit reference, approval state, timestamp. No unnecessary sensitive data logged.
