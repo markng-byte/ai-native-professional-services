@@ -31,3 +31,6 @@ package-lock.json
 *.pem
 credentials.json
 secrets.json
+
+# RM Co-pilot Layer 5 feedback log (local, not versioned)
+feedback/
