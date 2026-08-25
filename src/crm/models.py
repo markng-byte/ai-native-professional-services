@@ -14,20 +14,25 @@ Time-relative fields are stored as **integer day offsets** (``days_in_stage``,
 already used by the ``doc-expiry-scan`` skill. This keeps every capability and
 every eval deterministic regardless of the wall-clock date the suite runs on.
 
-Provisional domain decisions (D1)
----------------------------------
-The opportunity stage taxonomy, the per-stage ageing SLAs and the conversion
-risk bands below are a **documented provisional default** — the repository had
-no opportunity model of any kind (audit: ``opportunity`` = 0 hits). They follow
-conventional B2B professional-services practice and are expected to be replaced
-by the firm's real definitions. They are isolated here so that replacing them
-touches exactly one file.
+Decision thresholds (D1)
+------------------------
+The per-stage ageing SLAs and the conversion-risk multiple are **firm advice
+policy**, not implementation detail: change them and the advice an RM receives
+changes. They therefore live in ``config/thresholds.json`` and are loaded via
+``src/policy``, so the firm can set them without a code change. Every ageing
+verdict carries a ``policy_source`` string naming where the rule came from and
+whether it has been ratified.
+
+The stage taxonomy itself remains here, since it is a data-model concern rather
+than a tunable threshold.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
+
+import policy as _policy
 
 # ---------------------------------------------------------------------------
 # Stage taxonomy (D1 — provisional)
@@ -48,12 +53,12 @@ ALL_STAGES = OPEN_STAGES + CLOSED_STAGES
 STAGE_ORDER: Dict[str, int] = {s: i for i, s in enumerate(ALL_STAGES)}
 
 # Maximum healthy days in a stage before the opportunity is considered ageing.
-STAGE_SLA_DAYS: Dict[str, int] = {
-    STAGE_PROSPECT: 14,
-    STAGE_QUALIFIED: 21,
-    STAGE_PROPOSAL: 30,
-    STAGE_NEGOTIATION: 21,
-}
+# Sourced from config/thresholds.json — these numbers are firm advice policy,
+# not implementation detail, so they are configuration rather than constants.
+
+
+def _sla_map() -> Dict[str, int]:
+    return _policy.load().stage_sla_days
 
 # Conversion-risk bands expressed as a multiple of the stage SLA.
 RISK_LOW = "LOW"
@@ -66,16 +71,20 @@ def stage_is_open(stage: str) -> bool:
 
 
 def stage_sla_days(stage: str) -> Optional[int]:
-    return STAGE_SLA_DAYS.get(stage)
+    return _sla_map().get(stage)
 
 
 def assess_aging(stage: str, days_in_stage: int) -> Dict:
     """Classify how far past its stage SLA an opportunity has drifted.
 
     Returns a structured, explainable verdict — never a bare score — so the
-    reasoning layer can cite *why* something is at risk (master prompt §12).
+    reasoning layer can cite *why* something is at risk (master prompt §12), and
+    ``policy_source`` so a reader can see *whose rule* produced that verdict.
     """
-    sla = stage_sla_days(stage)
+    policy = _policy.load()
+    provenance = policy.provenance
+    sla = policy.stage_sla_days.get(stage)
+
     if sla is None:
         return {
             "stage": stage,
@@ -85,12 +94,13 @@ def assess_aging(stage: str, days_in_stage: int) -> Dict:
             "is_stalled": False,
             "conversion_risk": RISK_LOW,
             "basis": f"Stage {stage} is closed; ageing does not apply.",
+            "policy_source": provenance,
         }
 
     over = days_in_stage - sla
     if over <= 0:
         risk = RISK_LOW
-    elif days_in_stage >= 2 * sla:
+    elif days_in_stage >= policy.high_risk_multiple * sla:
         risk = RISK_HIGH
     else:
         risk = RISK_MEDIUM
@@ -106,6 +116,7 @@ def assess_aging(stage: str, days_in_stage: int) -> Dict:
             f"{days_in_stage}d in {stage} against a {sla}d SLA"
             + (f" — {over}d over." if over > 0 else " — within SLA.")
         ),
+        "policy_source": provenance,
     }
 
 

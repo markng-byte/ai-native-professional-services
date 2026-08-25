@@ -1,8 +1,8 @@
 # RM Sales Co-pilot — Use Case Definition (v1)
 
-> **Status:** Phase 4 delivered — Salesforce adapter **implemented but UNVERIFIED against a live
-> org** (no credentials available). Everything else: capabilities, RM workflows, Layer 2/3/4
-> evaluation, enforced HITL, single-source-of-truth refactor.
+> **Status:** Phase 5 delivered — RM surface (`🤝 RM Co-pilot` tab in `src/app.py`), backed by pure
+> view models and a session controller. Two components are **implemented but not executed**: the
+> Streamlit UI (Streamlit not installed) and the Salesforce adapter (no credentials).
 > · **Branch:** `feature/rm-copilot` · **PR:** #4
 > **Thesis:** firmOS can safely combine CRM data, domain knowledge, deterministic skills,
 > business tools and agent reasoning into **governed, grounded, auditable decision support** for an
@@ -151,7 +151,7 @@ agent guesses result                                              ❌
 | **L2 Tool contract** | Schema, input validation, authorization, output contract, errors, correlation_id, audit ref | ✅ `tests/test_capabilities.py` |
 | **L3 Agent workflow** | The 10 RM scenarios (new lead w/ incomplete info; new-jurisdiction interest; stalled opp; overdue follow-up; missing docs; cross-sell; high-value + weak activity; conflicting CRM info; insufficient info; escalation-required) | ✅ `tests/rm_workflow_scenarios.json` |
 | **L4 Runtime validation** | Live output validated pre-delivery; reuses `validate_envelope` verbatim | ✅ `src/validation/runtime.py` |
-| **L5 Human RM review** | Actual usefulness | ⏭ pilot |
+| **L5 Human RM review** | Actual usefulness | 🟡 capture wired (`src/rm/feedback.py`); measurement awaits real RM use |
 
 **Protected:** L1 semantics. No eval deletion, threshold weakening, matcher-semantics change to
 force a pass, or CI bypass — any change to eval semantics requires explicit documentation and

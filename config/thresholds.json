@@ -1,0 +1,21 @@
+{
+  "_comment": "firmOS RM Co-pilot decision thresholds. These are FIRM POLICY: they drive every risk band, priority and recommendation the co-pilot shows an RM. The values below are the documented starting point proposed during development and are NOT yet ratified by the firm — replace them with the real figures and record the owner and review date below. Changing this file changes advice; treat it as a governed change (see governance/GOVERNANCE.md §3).",
+
+  "policy_owner": "UNASSIGNED — set to the accountable role before pilot use",
+  "last_reviewed": null,
+  "ratified": false,
+
+  "stage_sla_days": {
+    "PROSPECT": 14,
+    "QUALIFIED": 21,
+    "PROPOSAL": 30,
+    "NEGOTIATION": 21
+  },
+
+  "high_risk_multiple": 2.0,
+
+  "stale_activity_days": 30,
+  "urgent_renewal_days": 30,
+  "urgent_renewal_high_priority_days": 14,
+  "high_value_amount": 50000
+}

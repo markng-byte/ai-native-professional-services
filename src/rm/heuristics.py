@@ -10,8 +10,10 @@ The rules are ordered by severity. The first matching rule wins, and the
 remaining matches are still reported as ``other_signals`` so nothing is hidden
 from the RM.
 
-Provisional thresholds (decision D1) live in one place — ``crm.models`` for
-stage ageing, and the constants below for activity/renewal windows.
+Every threshold these rules apply — stage SLAs, the stale-activity window, the
+renewal window and the high-value line — is loaded from ``config/thresholds.json``
+via ``src/policy``. They are firm advice policy, not constants, so the firm can
+change what the co-pilot recommends without a code change.
 """
 
 from __future__ import annotations
@@ -19,10 +21,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
-# Provisional windows (D1).
-STALE_ACTIVITY_DAYS = 30      # no contact in this many days = re-engagement signal
-URGENT_RENEWAL_DAYS = 30      # renewal inside this window is urgent
-HIGH_VALUE_AMOUNT = 50000.0   # opportunity value considered high-value
+# Decision windows come from config/thresholds.json (firm advice policy), not
+# from constants here. See src/policy/thresholds.py.
+import policy as _policy
 
 PRIORITY_CRITICAL = "CRITICAL"
 PRIORITY_HIGH = "HIGH"
@@ -65,6 +66,7 @@ def detect_signals(facts: Dict) -> List[Signal]:
     ``facts`` is built by the workflow layer from capability results only — this
     function performs no I/O and invents nothing.
     """
+    _p = _policy.load()
     signals: List[Signal] = []
 
     client_id = facts.get("client_id")
@@ -161,10 +163,11 @@ def detect_signals(facts: Dict) -> List[Signal]:
         soonest = min(urgent, key=lambda r: r["renewal_in_days"])
         signals.append(Signal(
             code="RENEWAL_DUE",
-            priority=PRIORITY_HIGH if soonest["renewal_in_days"] <= 14 else PRIORITY_MEDIUM,
+            priority=(PRIORITY_HIGH if soonest["renewal_in_days"]
+                      <= _p.urgent_renewal_high_priority_days else PRIORITY_MEDIUM),
             action=f"Confirm renewal for {soonest['service_type']}",
             reason=(
-                f"{len(urgent)} renewal(s) inside the {URGENT_RENEWAL_DAYS}-day window; "
+                f"{len(urgent)} renewal(s) inside the {_p.urgent_renewal_days}-day window; "
                 f"the soonest is {soonest['service_type']} in {soonest['renewal_in_days']} day(s)."
             ),
             evidence=[f"{r['engagement_id']} due in {r['renewal_in_days']}d" for r in urgent],
@@ -210,9 +213,9 @@ def detect_signals(facts: Dict) -> List[Signal]:
             reason="No interaction history exists for this client.",
             evidence=["days_since_last_activity=None"],
         ))
-    elif days_since_activity is not None and days_since_activity > STALE_ACTIVITY_DAYS:
+    elif days_since_activity is not None and days_since_activity > _p.stale_activity_days:
         high_value = [o for o in opportunities
-                      if (o.get("amount") or 0) >= HIGH_VALUE_AMOUNT]
+                      if (o.get("amount") or 0) >= _p.high_value_amount]
         if high_value:
             names = ", ".join(o["opportunity_id"] for o in high_value)
             signals.append(Signal(
@@ -221,7 +224,7 @@ def detect_signals(facts: Dict) -> List[Signal]:
                 action=f"Re-engage now — high-value opportunity with no recent contact ({names})",
                 reason=(
                     f"No logged contact for {days_since_activity} days while "
-                    f"{names} carries a value at or above {HIGH_VALUE_AMOUNT:,.0f}."
+                    f"{names} carries a value at or above {_p.high_value_amount:,.0f}."
                 ),
                 evidence=[f"days_since_last_activity={days_since_activity}",
                           f"high_value_opportunities={names}"],

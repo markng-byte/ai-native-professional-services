@@ -41,6 +41,8 @@ from capabilities.errors import (
 from crm.adapters import get_adapter
 from crm.models import assess_aging, stage_is_open
 
+import policy as _policy
+
 from skills import SKILLS  # gate-verified deterministic skills
 
 
@@ -429,7 +431,10 @@ def get_client_documents(payload: Dict) -> Dict:
 
 
 def get_renewal_status(payload: Dict) -> Dict:
-    """Upcoming renewals, soonest first. ``urgent`` = due within 30 days."""
+    """Upcoming renewals, soonest first.
+
+    The urgency window is firm policy (config/thresholds.json), not a constant.
+    """
     cap = "get_renewal_status"
     ctx, failure = _begin(cap, payload)
     if failure:
@@ -438,12 +443,14 @@ def get_renewal_status(payload: Dict) -> Dict:
     if failure:
         return failure
 
+    _urgent_window = _policy.load().urgent_renewal_days
     upcoming = [e for e in ctx["adapter"].list_engagements(client.client_id)
                 if e.renewal_in_days is not None and e.status == "ACTIVE"]
     upcoming.sort(key=lambda e: e.renewal_in_days)
     renewals = [
         {"engagement_id": e.engagement_id, "service_type": e.service_type,
-         "renewal_in_days": e.renewal_in_days, "is_urgent": e.renewal_in_days <= 30}
+         "renewal_in_days": e.renewal_in_days,
+         "is_urgent": e.renewal_in_days <= _urgent_window}
         for e in upcoming
     ]
     result = {
