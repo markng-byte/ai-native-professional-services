@@ -109,14 +109,41 @@ class FixtureCRMAdapter:
 def get_adapter() -> CRMAdapter:
     """Select the adapter for this process.
 
-    ``FIRMOS_CRM_SOURCE=fixtures`` (default) is the only implemented source.
-    A ``salesforce`` value is rejected loudly rather than silently degrading —
-    per master prompt §27, *fixture must never be reported as Salesforce*.
+    ``FIRMOS_CRM_SOURCE`` selects the source: ``fixtures`` (default) or
+    ``salesforce``. Selecting Salesforce requires a complete, **confirmed**
+    org mapping and live credentials; anything missing raises rather than
+    quietly falling back to fixtures. Per master prompt §27 a fixture must
+    never be reported as Salesforce — and an unconfigured org must never be
+    reported as an empty CRM.
     """
     source = os.environ.get("FIRMOS_CRM_SOURCE", "fixtures").strip().lower()
+
     if source == "fixtures":
         return FixtureCRMAdapter()
+
+    if source == "salesforce":
+        # Imported lazily: the fixture path must never require Salesforce config.
+        from crm.salesforce.adapter import SalesforceCRMAdapter
+        from crm.salesforce.config import SalesforceConfig
+        from crm.salesforce.transport import HttpSalesforceTransport
+
+        config = SalesforceConfig.from_env()
+        problems = config.validate()
+        if problems:
+            raise RuntimeError(
+                "Salesforce CRM source selected but not usable:\n  - "
+                + "\n  - ".join(problems)
+                + "\nRefusing to continue: an unconfigured org would return empty "
+                  "results that are indistinguishable from a client having no data."
+            )
+        transport = HttpSalesforceTransport(
+            instance_url=config.instance_url,
+            access_token=config.access_token,
+            api_version=config.api_version,
+        )
+        return SalesforceCRMAdapter(transport, config)
+
     raise NotImplementedError(
-        f"CRM source {source!r} is not implemented. Only 'fixtures' is available "
-        "in v1; the Salesforce adapter is deferred to a later phase."
+        f"CRM source {source!r} is not implemented. Valid values are "
+        "'fixtures' and 'salesforce'."
     )
