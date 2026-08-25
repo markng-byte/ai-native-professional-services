@@ -32,3 +32,23 @@ jobs:
 
       - name: Layers 2 & 3 — capability contracts and RM workflow scenarios
         run: python -m unittest discover -s tests -v
+
+  # Separate job on purpose: the eval gate above installs nothing, so it stays
+  # hermetic and fast. The UI smoke test needs Streamlit, so it gets its own
+  # environment rather than adding a heavy dependency to the gate.
+  ui-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install UI dependencies
+        run: pip install streamlit python-dotenv
+
+      - name: RM surface smoke test (drives the real Streamlit app)
+        run: python -m unittest tests.test_app_smoke -v
