@@ -24,8 +24,11 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Byte-compile skills and eval runner
-        run: python -m compileall src/skills src/evals run_evals.py
+      - name: Byte-compile skills, capabilities and eval runner
+        run: python -m compileall src run_evals.py
 
-      - name: Run L4 skill eval gate
+      - name: Layer 1 — L4 skill regression eval gate
         run: python run_evals.py
+
+      - name: Layers 2 & 3 — capability contracts and RM workflow scenarios
+        run: python -m unittest discover -s tests -v

@@ -16,10 +16,17 @@ The UI layer (app.py) consumes:
 
 from __future__ import annotations
 
+import os
 import re
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable, Dict, List, Optional
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from skills import SKILLS  # noqa: E402  — gate-verified source of truth
+from skills.jurisdiction_compare import _CORPUS as _SKILL_JURIS_CORPUS  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Agent roster (mirrors L5_Agents specs + src/agents.py)
@@ -142,27 +149,32 @@ class Intent:
     missing: List[str] = field(default_factory=list)
 
 
+_ROUTE_TO_AGENT = {
+    "Research Agent": "research",
+    "Compliance Agent": "compliance",
+    "Drafting Agent": "drafting",
+    "Operations Agent": "operations",
+    "Human Intake Officer": "orchestrator",
+}
+
+
 def classify(prompt: str) -> Intent:
-    """Keyword intent classifier. Same contract as the L4 intent-classifier skill."""
-    p = prompt.lower()
+    """Classify intent by delegating to the gate-verified L4 skill.
 
-    if any(k in p for k in ("compare", "jurisdiction", " vs ", "versus", "which is better")):
-        label, route, agent = "RESEARCH", "Research Agent", "research"
-    elif any(k in p for k in ("screen", "sanction", "kyc", "aml", "pep", "adverse media")):
-        label, route, agent = "COMPLIANCE", "Compliance Agent", "compliance"
-    elif any(k in p for k in ("ubo", "beneficial owner", "ownership", "conflict")):
-        label, route, agent = "COMPLIANCE", "Compliance Agent", "compliance"
-    elif any(k in p for k in ("draft", "letter", "engagement", "agreement", "memo")):
-        label, route, agent = "DRAFTING", "Drafting Agent", "drafting"
-    elif any(k in p for k in ("renew", "deadline", "filing", "expiry", "due", "calendar")):
-        label, route, agent = "OPERATIONS", "Operations Agent", "operations"
-    elif any(k in p for k in ("onboard", "brief", "prepare", "plan")):
-        label, route, agent = "RESEARCH", "Research Agent", "research"  # multi, EA leads
-    else:
-        return Intent("AMBIGUOUS", 0.42, "Human Intake Officer", "orchestrator",
+    This previously carried a second, independent keyword classifier, so the UI
+    could disagree with the skill the eval gate actually verifies. It now calls
+    ``skills.intent-classifier`` and only adapts the result to the UI's
+    presentation model.
+    """
+    result = SKILLS["intent-classifier"]({"raw_message": prompt})
+    label = result["intent_label"]
+    route = result["routing_target"]
+    agent = _ROUTE_TO_AGENT.get(route, "orchestrator")
+
+    if label == "AMBIGUOUS":
+        return Intent(label, result["confidence_score"], route, agent,
                       missing=["primary objective", "client name"])
-
-    return Intent(label, 0.95, route, agent)
+    return Intent(label, result["confidence_score"], route, agent)
 
 
 # ---------------------------------------------------------------------------
@@ -182,20 +194,15 @@ _JURIS = {
     "luxembourg": ("LU", "Luxembourg"),
 }
 
-# Knowledge-graph mock data (consistent with JurisdictionCompareTool).
+# Jurisdiction knowledge is owned by the gated ``jurisdiction-compare`` skill.
+# This module previously kept its own copy, which could drift from the verified
+# figures; it is now a presentation-time view over the single source of truth.
 _JURIS_DATA = {
-    "VG": {"cost": "$2,500", "tax": "0% corporate", "timeline": "3-5 days",
-           "substance": "Light (ESA)", "fatf": "Compliant", "banking": "Moderate"},
-    "KY": {"cost": "$4,500", "tax": "0% corporate", "timeline": "5-7 days",
-           "substance": "Light (ESA)", "fatf": "Compliant", "banking": "Strong"},
-    "SG": {"cost": "$3,000", "tax": "17% corporate", "timeline": "1-2 days",
-           "substance": "High", "fatf": "Compliant", "banking": "Excellent"},
-    "HK": {"cost": "$2,800", "tax": "16.5% corporate", "timeline": "2-4 days",
-           "substance": "Medium", "fatf": "Compliant", "banking": "Strong"},
-    "US-DE": {"cost": "$1,200", "tax": "Pass-through / 21%", "timeline": "1-3 days",
-              "substance": "Low", "fatf": "Compliant", "banking": "Excellent"},
-    "AE": {"cost": "$5,500", "tax": "9% corporate", "timeline": "5-10 days",
-           "substance": "Medium", "fatf": "Monitored", "banking": "Moderate"},
+    code: {
+        "cost": row["cost"], "tax": row["tax"], "timeline": row["timeline"],
+        "substance": row["substance"], "fatf": row["FATF"], "banking": row["banking"],
+    }
+    for code, row in _SKILL_JURIS_CORPUS.items()
 }
 
 
