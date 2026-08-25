@@ -1,7 +1,8 @@
 # RM Sales Co-pilot — Use Case Definition (v1)
 
-> **Status:** Phase 3 delivered — capabilities, RM workflows, Layer 2/3/4 evaluation, enforced
-> HITL, and single-source-of-truth refactor. Phase 4 (Salesforce sandbox adapter) awaiting approval.
+> **Status:** Phase 4 delivered — Salesforce adapter **implemented but UNVERIFIED against a live
+> org** (no credentials available). Everything else: capabilities, RM workflows, Layer 2/3/4
+> evaluation, enforced HITL, single-source-of-truth refactor.
 > · **Branch:** `feature/rm-copilot` · **PR:** #4
 > **Thesis:** firmOS can safely combine CRM data, domain knowledge, deterministic skills,
 > business tools and agent reasoning into **governed, grounded, auditable decision support** for an
@@ -47,7 +48,7 @@ being *able* to retrieve data is not authorization to expose it.
 
 | Domain | Answers | Source in v1 | Must not become |
 |---|---|---|---|
-| **CRM / transactional** | "What is happening with this client?" | **Fixtures** (Salesforce sandbox deferred to Phase 5) | The knowledge base |
+| **CRM / transactional** | "What is happening with this client?" | **Fixtures** by default; `FIRMOS_CRM_SOURCE=salesforce` selects the Phase 4 adapter (unverified — needs credentials + confirmed org mapping) | The knowledge base |
 | **firmOS knowledge** | "What does firmOS know about this topic?" | Existing L1/L2 specs + deterministic skills | A CRM |
 | **Agent memory** | "What is this RM working on right now?" | **Working memory only** (session, selected client/opportunity, objective) | A shadow CRM |
 

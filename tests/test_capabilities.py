@@ -263,10 +263,26 @@ class TestSkillReuse(unittest.TestCase):
 class TestAdapterSeam(unittest.TestCase):
     """§6: capabilities must not be coupled to a data source."""
 
-    def test_unimplemented_source_fails_loudly(self):
-        """§27: a fixture must never be silently reported as Salesforce."""
+    def test_unusable_source_fails_loudly(self):
+        """§27: a fixture must never be silently reported as Salesforce.
+
+        Phase 4 implemented the Salesforce adapter, so selecting it without
+        credentials now raises RuntimeError (unconfigured) rather than
+        NotImplementedError (absent). The invariant this test protects is
+        unchanged: selecting a non-fixture source must never silently hand back
+        a fixture adapter.
+        """
         from crm.adapters import get_adapter
         os.environ["FIRMOS_CRM_SOURCE"] = "salesforce"
+        try:
+            with self.assertRaises((RuntimeError, NotImplementedError)):
+                get_adapter()
+        finally:
+            os.environ.pop("FIRMOS_CRM_SOURCE", None)
+
+    def test_unknown_source_never_falls_back_to_fixtures(self):
+        from crm.adapters import get_adapter
+        os.environ["FIRMOS_CRM_SOURCE"] = "not-a-real-source"
         try:
             with self.assertRaises(NotImplementedError):
                 get_adapter()
