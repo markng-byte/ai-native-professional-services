@@ -43,6 +43,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
+from hitl.storage import (
+    ApprovalStorage,
+    ApprovalStorageError,
+    InMemoryApprovalStorage,
+    default_storage,
+)
+
 # --- states ---------------------------------------------------------------
 
 STATE_DRAFTED = "DRAFTED"
@@ -148,10 +155,46 @@ class ApprovalError(Exception):
 
 
 class ApprovalStore:
-    """In-process approval store with an append-only event trail."""
+    """Approval store with an append-only event trail.
 
-    def __init__(self) -> None:
-        self._records: Dict[str, ApprovalRecord] = {}
+    Business rules (legal transitions, approver roles, mandatory justification)
+    live here; persistence lives in :mod:`hitl.storage`. The public interface is
+    unchanged from the in-memory version, so callers need no modification when a
+    durable backend is used.
+
+    ``storage`` defaults to :func:`hitl.storage.default_storage`, which selects
+    SQLite when ``FIRMOS_APPROVAL_DB`` is set and stays in-memory otherwise.
+    """
+
+    def __init__(self, storage: Optional[ApprovalStorage] = None) -> None:
+        self._storage: ApprovalStorage = storage or default_storage()
+
+    @property
+    def backend(self) -> str:
+        return getattr(self._storage, "backend_name", "unknown")
+
+    @property
+    def durable(self) -> bool:
+        """Whether approvals survive a restart. Surfaced so a UI can say so."""
+        return bool(getattr(self._storage, "durable", False))
+
+    @staticmethod
+    def _to_record(data: Dict) -> "ApprovalRecord":
+        record = ApprovalRecord(
+            approval_id=data["approval_id"],
+            action_type=data["action_type"],
+            state=data["state"],
+            correlation_id=data.get("correlation_id"),
+            capability=data.get("capability"),
+            client_id=data.get("client_id"),
+            submitted_by=data.get("submitted_by"),
+            required_role=data["required_role"],
+            payload_ref=dict(data.get("payload_ref") or {}),
+            events=[dict(e) for e in data.get("events") or []],
+            decided_by=data.get("decided_by"),
+            decision_justification=data.get("decision_justification"),
+        )
+        return record
 
     # -- submission --------------------------------------------------------
 
@@ -188,11 +231,12 @@ class ApprovalStore:
                 "governance_ref": policy.governance_ref,
             },
         )
-        record.events.append({
+        event = {
             "event": "SUBMITTED", "from": current, "to": STATE_PENDING_REVIEW,
             "actor": record.submitted_by, "timestamp": _now(),
-        })
-        self._records[record.approval_id] = record
+        }
+        record.events.append(event)
+        self._storage.insert(record.as_dict(), event)
         return record
 
     # -- decision ----------------------------------------------------------
@@ -200,9 +244,10 @@ class ApprovalStore:
     def decide(self, approval_id: str, *, decision: str, reviewer_id: str,
                reviewer_role: str, justification: Optional[str] = None) -> ApprovalRecord:
         """Approve or reject a pending artefact."""
-        record = self._records.get(approval_id)
-        if record is None:
+        data = self._storage.get(approval_id)
+        if data is None:
             raise ApprovalError(f"Unknown approval_id {approval_id!r}.")
+        record = self._to_record(data)
 
         if decision not in (STATE_APPROVED, STATE_REJECTED):
             raise ApprovalError(
@@ -225,27 +270,41 @@ class ApprovalStore:
         if decision == STATE_REJECTED and not justification:
             raise ApprovalError("A rejection requires a justification.")
 
-        record.events.append({
+        event = {
             "event": decision, "from": record.state, "to": decision,
             "actor": reviewer_id, "role": reviewer_role,
             "justification": justification, "timestamp": _now(),
-        })
-        record.state = decision
-        record.decided_by = reviewer_id
-        record.decision_justification = justification
-        return record
+        }
+        try:
+            # Compare-and-set against the state we just validated. If another
+            # reviewer decided this item first, the storage layer refuses rather
+            # than letting one decision silently overwrite the other.
+            updated = self._storage.transition(
+                approval_id,
+                expected_state=record.state,
+                new_state=decision,
+                event=event,
+                decided_by=reviewer_id,
+                justification=justification,
+            )
+        except ApprovalStorageError as exc:
+            raise ApprovalError(str(exc)) from exc
+
+        return self._to_record(updated)
 
     # -- reads -------------------------------------------------------------
 
     def get(self, approval_id: str) -> Optional[ApprovalRecord]:
-        return self._records.get(approval_id)
+        data = self._storage.get(approval_id)
+        return self._to_record(data) if data else None
 
     def state_of(self, approval_id: str) -> Optional[str]:
-        record = self._records.get(approval_id)
-        return record.state if record else None
+        data = self._storage.get(approval_id)
+        return data["state"] if data else None
 
     def pending(self) -> List[ApprovalRecord]:
-        return [r for r in self._records.values() if r.state == STATE_PENDING_REVIEW]
+        return [self._to_record(d)
+                for d in self._storage.list_by_state(STATE_PENDING_REVIEW)]
 
 
 def action_type_for(envelope: Dict) -> str:
