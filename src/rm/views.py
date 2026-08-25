@@ -229,8 +229,11 @@ def opportunity_review_view(envelope: Dict) -> Dict:
             "sla_days": aging.get("sla_days"),
             "over_sla_by_days": aging.get("over_sla_by_days"),
             "is_stalled": aging.get("is_stalled"),
-            # The explainable basis, not just a score.
+            # The explainable basis, not just a score...
             "basis": aging.get("basis"),
+            # ...and whose rule produced it. An RM should be able to see that a
+            # risk band is firm policy with an owner, not an oracle.
+            "policy_source": aging.get("policy_source"),
         },
         "missing_actions": r.get("missing_actions") or [],
         "recommended_actions": [

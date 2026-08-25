@@ -453,6 +453,8 @@ def render_rm_copilot():
                 else:
                     st.markdown(f"**{review['stage_assessment']}**")
                     st.caption(review["aging"]["basis"])
+                    if review["aging"].get("policy_source"):
+                        st.caption(f"Risk band per {review['aging']['policy_source']}")
                     if review["missing_actions"]:
                         st.caption("Missing actions")
                         for m in review["missing_actions"]:
