@@ -209,3 +209,39 @@ class TestPolicyValidation(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestRatificationGuardrail(unittest.TestCase):
+    """Ratification is a governance claim, so it must carry accountability."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+
+    def test_cannot_ratify_without_an_owner(self):
+        path = write_policy(self._tmp, ratified=True,
+                            policy_owner="UNASSIGNED — set before pilot use",
+                            last_reviewed="2026-08-25")
+        with self.assertRaises(ThresholdError) as ctx:
+            policy.load(path)
+        self.assertIn("policy_owner", str(ctx.exception))
+
+    def test_cannot_ratify_without_a_review_date(self):
+        path = write_policy(self._tmp, ratified=True,
+                            policy_owner="Head of Corporate Services")
+        with self.assertRaises(ThresholdError) as ctx:
+            policy.load(path)
+        self.assertIn("last_reviewed", str(ctx.exception))
+
+    def test_properly_ratified_policy_loads_and_reads_as_firm_policy(self):
+        path = write_policy(self._tmp, ratified=True,
+                            policy_owner="Head of Corporate Services",
+                            last_reviewed="2026-08-25")
+        t = policy.load(path)
+        self.assertTrue(t.ratified)
+        self.assertIn("firm policy", t.provenance)
+        self.assertNotIn("provisional", t.provenance)
+
+    def test_unratified_policy_needs_no_owner(self):
+        """A draft policy must still load — the warning is the point, not a block."""
+        t = policy.load(write_policy(self._tmp))
+        self.assertFalse(t.ratified)

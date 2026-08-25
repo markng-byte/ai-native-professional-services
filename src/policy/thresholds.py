@@ -103,6 +103,22 @@ class Thresholds:
                 "urgent_renewal_days — the escalated window must sit inside the urgent one"
             )
 
+        # Ratification is a governance claim, not a flag. Declaring these
+        # numbers to be firm policy without naming who owns them or when they
+        # were agreed would make the provenance shown to an RM meaningless.
+        if self._data.get("ratified"):
+            owner = (self._data.get("policy_owner") or "").strip()
+            if not owner or owner.upper().startswith("UNASSIGNED"):
+                raise ThresholdError(
+                    f"{self.source}: cannot set ratified=true while policy_owner is "
+                    "unassigned — name the accountable role first"
+                )
+            if not self._data.get("last_reviewed"):
+                raise ThresholdError(
+                    f"{self.source}: cannot set ratified=true without last_reviewed — "
+                    "record the date these figures were agreed"
+                )
+
     # -- accessors ---------------------------------------------------------
 
     @property

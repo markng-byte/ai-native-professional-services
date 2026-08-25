@@ -280,7 +280,8 @@ with st.sidebar:
 # Phase 0 audit found, so it is deliberately kept out.
 
 from hitl.approvals import ROLE_COMPLIANCE_OFFICER, ROLE_DEPARTMENT_HEAD, ROLE_RM  # noqa: E402
-from hitl import STATE_APPROVED, STATE_REJECTED, ApprovalError  # noqa: E402
+from hitl import STATE_APPROVED, STATE_REJECTED, ApprovalError, ApprovalStore  # noqa: E402
+from hitl.storage import InMemoryApprovalStorage, SqliteApprovalStorage  # noqa: E402
 from crm.fixtures import RELATIONSHIP_MANAGERS  # noqa: E402  (dev actor picker — see D2)
 from rm import views as rm_views  # noqa: E402
 from rm.feedback import VERDICT_NOT_USEFUL, VERDICT_USEFUL, VERDICT_WRONG, record_feedback  # noqa: E402
@@ -289,9 +290,32 @@ from rm.session import RMSession  # noqa: E402
 _REVIEWER_ROLES = [ROLE_RM, ROLE_COMPLIANCE_OFFICER, ROLE_DEPARTMENT_HEAD]
 
 
+# Approvals are audit records (GOVERNANCE.md §5.1, seven-year retention), so the
+# *application* defaults to durable storage rather than requiring an operator to
+# remember an environment variable. Libraries and tests keep the in-memory
+# default, which is why this default lives here and not in hitl.storage.
+DEFAULT_APPROVAL_DB = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "approvals", "approvals.db",
+)
+
+
+def _approval_store() -> ApprovalStore:
+    """Build the approval store for the running app.
+
+    ``FIRMOS_APPROVAL_DB`` overrides the location. Setting it to ``memory``
+    opts out deliberately — for a throwaway demo where losing approvals is
+    acceptable — so opting out is an explicit choice rather than an omission.
+    """
+    configured = (os.environ.get("FIRMOS_APPROVAL_DB") or "").strip()
+    if configured.lower() in ("memory", ":memory:"):
+        return ApprovalStore(InMemoryApprovalStorage())
+    return ApprovalStore(SqliteApprovalStorage(configured or DEFAULT_APPROVAL_DB))
+
+
 def _rm_session() -> RMSession:
     if "rm_session" not in st.session_state:
-        st.session_state.rm_session = RMSession()
+        st.session_state.rm_session = RMSession(store=_approval_store())
     return st.session_state.rm_session
 
 

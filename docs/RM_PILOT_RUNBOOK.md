@@ -71,20 +71,40 @@ any number. **Do not paste client details into the note**; the note is stored.
 
 Three things, in order of how badly they bite:
 
-**1. Set the real thresholds.** `config/thresholds.json` currently ships
-`"ratified": false` with an unassigned owner, because the stage SLAs, the conversion-risk
-multiple and the high-value line are development placeholders. The UI says so on screen, but
-an RM is still being told "HIGH conversion risk" on the strength of numbers nobody at the firm
-chose. Set them, set `policy_owner`, set `ratified: true`. No code change; the app reads the
-file.
+**1. Set the real thresholds.** `config/thresholds.json` ships `"ratified": false` with an
+unassigned owner, because the stage SLAs, the conversion-risk multiple and the high-value line
+are development placeholders. The UI says so on screen, but an RM is still being told "HIGH
+conversion risk" on the strength of numbers nobody at the firm chose.
 
-**2. Make approvals durable.**
+Edit the file — no code change, the app reads it at runtime:
+
+| Field | The question it answers |
+|---|---|
+| `stage_sla_days.PROSPECT` | After how many days is an unqualified enquiry going stale? |
+| `stage_sla_days.QUALIFIED` | How long should qualification take before you chase? |
+| `stage_sla_days.PROPOSAL` | How long do clients normally take to respond to a proposal? |
+| `stage_sla_days.NEGOTIATION` | Past how many days is a negotiation drifting? |
+| `high_risk_multiple` | How many times over SLA before it is *probably lost*, not just late? (2.0 = double) |
+| `stale_activity_days` | After how long with no contact should an RM be nudged? |
+| `urgent_renewal_days` | How far ahead does a renewal become urgent? |
+| `urgent_renewal_high_priority_days` | Inside which window does it escalate? (must be ≤ the line above) |
+| `high_value_amount` | Above what value does an opportunity get special attention? |
+
+Then set `policy_owner` to the accountable role and `last_reviewed` to today, and flip
+`ratified: true`. The loader **refuses to start** if you set `ratified: true` without both —
+ratification is a governance claim, so it has to carry accountability. Once ratified, the UI
+stops calling the numbers provisional and starts citing them as firm policy with an owner.
+
+**2. Approvals are durable by default — just confirm where.**
+The app writes to `approvals/approvals.db` unless told otherwise, because approvals are audit
+records under `governance/GOVERNANCE.md` §5.1 (seven-year retention) and that should not depend
+on remembering an environment variable. To put the file somewhere backed up:
 ```bash
-export FIRMOS_APPROVAL_DB=approvals/approvals.db
+export FIRMOS_APPROVAL_DB=/var/lib/firmos/approvals.db
 ```
-Without it, approvals are held in memory and vanish when the process restarts. Approvals are
-audit records under `governance/GOVERNANCE.md` §5.1 (seven-year retention). The app warns on
-screen when this is unset.
+`FIRMOS_APPROVAL_DB=memory` opts out deliberately for a throwaway demo; the app then warns on
+screen that approvals will be lost. **Back this file up** — it is the audit trail, and its event
+log is insert-only by design.
 
 **3. Decide the data source.** The pilot runs on **synthetic fixtures** by default — safe, and
 enough to judge whether the advice is useful. Live Salesforce (`FIRMOS_CRM_SOURCE=salesforce`)
