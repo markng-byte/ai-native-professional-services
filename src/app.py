@@ -272,9 +272,280 @@ with st.sidebar:
 
 
 # ===========================================================================
+# RM Co-pilot surface
+# ===========================================================================
+# This is a *rendering shell*. It never computes a priority, a risk, an ageing
+# figure or a recommendation — it displays what rm.session returned, shaped by
+# rm.views. Adding business logic here is what created the triplication the
+# Phase 0 audit found, so it is deliberately kept out.
+
+from hitl.approvals import ROLE_COMPLIANCE_OFFICER, ROLE_DEPARTMENT_HEAD, ROLE_RM  # noqa: E402
+from hitl import STATE_APPROVED, STATE_REJECTED, ApprovalError  # noqa: E402
+from crm.fixtures import RELATIONSHIP_MANAGERS  # noqa: E402  (dev actor picker — see D2)
+from rm import views as rm_views  # noqa: E402
+from rm.feedback import VERDICT_NOT_USEFUL, VERDICT_USEFUL, VERDICT_WRONG, record_feedback  # noqa: E402
+from rm.session import RMSession  # noqa: E402
+
+_REVIEWER_ROLES = [ROLE_RM, ROLE_COMPLIANCE_OFFICER, ROLE_DEPARTMENT_HEAD]
+
+
+def _rm_session() -> RMSession:
+    if "rm_session" not in st.session_state:
+        st.session_state.rm_session = RMSession()
+    return st.session_state.rm_session
+
+
+def _audit_caption(audit: dict):
+    st.caption(
+        f"corr `{audit.get('correlation_id')}` · audit `{audit.get('audit_ref')}` · "
+        f"source `{audit.get('data_source')}` · actor `{audit.get('actor_id')}`"
+    )
+
+
+def _render_error(view: dict):
+    if view.get("is_authorization_denial"):
+        st.error(f"🔒 **{view['headline']}** — {view['message']}")
+    else:
+        st.warning(f"**{view['headline']}** — {view['message']}")
+    _audit_caption(view["audit"])
+
+
+def _feedback_controls(envelope: dict, rm_id: str, key: str):
+    st.caption("Was this useful?")
+    c1, c2, c3 = st.columns(3)
+    choices = (
+        (c1, "👍 Useful", VERDICT_USEFUL),
+        (c2, "👎 Not useful", VERDICT_NOT_USEFUL),
+        (c3, "⚠️ Wrong", VERDICT_WRONG),
+    )
+    for col, label, verdict in choices:
+        with col:
+            if st.button(label, key=f"fb_{key}_{verdict}", use_container_width=True):
+                record_feedback(envelope, rm_id=rm_id, verdict=verdict)
+                st.toast("Feedback recorded — thank you.")
+
+
+def _render_signal(sig: dict, *, expanded: bool):
+    badge = sig["badge"]
+    with st.expander(f"{badge['glyph']}  {badge['label']} — {sig['action']}",
+                     expanded=expanded):
+        st.write(sig["reason"])
+        if sig.get("evidence"):
+            st.caption("Evidence")
+            for e in sig["evidence"]:
+                st.markdown(f"- `{e}`")
+
+
+def render_rm_copilot():
+    session = _rm_session()
+
+    st.markdown('<div class="section-label">RM Co-pilot — grounded, governed decision support</div>',
+                unsafe_allow_html=True)
+
+    # --- actor selection (dev stand-in for real auth; decision D2) ---------
+    left, right = st.columns([2, 3])
+    with left:
+        rm_options = list(RELATIONSHIP_MANAGERS)
+        chosen = st.selectbox(
+            "Acting as", rm_options,
+            format_func=lambda r: f"{RELATIONSHIP_MANAGERS[r].full_name} ({r})",
+            key="rm_actor",
+        )
+        session.select_rm(chosen)
+        st.caption("⚠️ Development actor picker — not authentication (decision D2 open).")
+    with right:
+        query = st.text_input("Find a client", key="rm_query",
+                              placeholder="Name, trade name or entity number…")
+
+    if query:
+        sv = rm_views.search_results_view(session.search(query))
+        if sv["kind"] == "error":
+            _render_error(sv)
+        elif sv["match_count"] == 0:
+            st.info(sv["empty_note"])
+        else:
+            labels = {m["client_id"]: f"{m['legal_name']} · {m['jurisdiction']} "
+                                      f"{m['risk']['glyph']} {m['risk_rating']}"
+                      for m in sv["matches"]}
+            picked = st.radio("Matches", list(labels), format_func=lambda c: labels[c],
+                              key="rm_pick")
+            if st.button("Open client workspace", type="primary"):
+                session.select_client(picked)
+                st.rerun()
+
+    if not session.is_ready:
+        st.info("Search for a client above to begin. Only clients assigned to you are shown.")
+        return
+
+    # --- client workspace -------------------------------------------------
+    summary = rm_views.client_summary_view(session.client_summary())
+    if summary["kind"] == "error":
+        _render_error(summary)
+        return
+
+    st.subheader(summary["headline"])
+
+    action_env = session.next_best_action()
+    action = rm_views.next_action_view(action_env)
+
+    col_a, col_b = st.columns([3, 2])
+
+    with col_a:
+        if action["kind"] == "error":
+            _render_error(action)
+        else:
+            badge = action["badge"]
+            with st.container(border=True):
+                st.markdown(f"### {badge['glyph']}  Next best action — {badge['label']}")
+                st.markdown(f"**{action['recommended_action']}**")
+                st.write(action["reason"])
+                if action["evidence"]:
+                    st.caption("Evidence")
+                    for e in action["evidence"]:
+                        st.markdown(f"- `{e}`")
+                if action["required_information"]:
+                    st.caption("Still needed")
+                    for r in action["required_information"]:
+                        st.markdown(f"- {r}")
+                if action["suggested_next_question"]:
+                    st.info(f"💬 Suggested question: {action['suggested_next_question']}")
+                _audit_caption(action["audit"])
+                _feedback_controls(action_env, session.rm_id, "nba")
+
+            if action["other_signals"]:
+                st.markdown('<div class="section-label">Other signals (not hidden)</div>',
+                            unsafe_allow_html=True)
+                for sig in action["other_signals"]:
+                    _render_signal(sig, expanded=False)
+
+    with col_b:
+        if summary["missing_information"]:
+            with st.container(border=True):
+                st.markdown("#### ❓ What we do not know")
+                for gap in summary["missing_information"]:
+                    st.markdown(f"- {gap}")
+
+        if summary["open_items"]:
+            with st.container(border=True):
+                st.markdown("#### 📌 Open items")
+                for item in summary["open_items"]:
+                    flag = "🔴 " if item.get("is_overdue") else ""
+                    st.markdown(f"- {flag}**{item['type']}** · {item['detail']}")
+
+        if summary["known_needs"]:
+            with st.container(border=True):
+                st.markdown("#### 🧾 Known needs")
+                st.write(", ".join(summary["known_needs"]))
+
+    # --- opportunities ----------------------------------------------------
+    if summary["opportunities"]:
+        st.markdown('<div class="section-label">Opportunities</div>', unsafe_allow_html=True)
+        for opp in summary["opportunities"]:
+            with st.expander(
+                f"{opp['risk']['glyph']}  {opp['opportunity_id']} — {opp['name']} "
+                f"({opp['stage']}, {opp['currency']} {opp['amount']:,.0f})"
+            ):
+                review = rm_views.opportunity_review_view(
+                    session.opportunity_review(opp["opportunity_id"])
+                )
+                if review["kind"] == "error":
+                    _render_error(review)
+                else:
+                    st.markdown(f"**{review['stage_assessment']}**")
+                    st.caption(review["aging"]["basis"])
+                    if review["missing_actions"]:
+                        st.caption("Missing actions")
+                        for m in review["missing_actions"]:
+                            st.markdown(f"- {m}")
+                    for a in review["recommended_actions"]:
+                        _render_signal(a, expanded=False)
+                    _audit_caption(review["audit"])
+
+    # --- draft -> approval -> gate ---------------------------------------
+    st.markdown('<div class="section-label">Follow-up draft (human-gated)</div>',
+                unsafe_allow_html=True)
+
+    if st.button("✍️  Generate follow-up draft"):
+        session.generate_draft()
+        st.rerun()
+
+    if session.draft_envelope:
+        draft = rm_views.draft_view(session.draft_envelope, session.approval_record(),
+                                    session.delivery_decision())
+        if draft["kind"] == "error":
+            _render_error(draft)
+            return
+
+        with st.container(border=True):
+            st.code(draft["draft"], language=None)
+            st.caption(f"🔒 {draft['never_sent_notice']}")
+
+            state = draft["approval_state"]
+            st.markdown(f"**Approval state:** `{state}`")
+            if draft["gate_status"] == "BLOCKED":
+                for reason in draft["blocked_reasons"]:
+                    st.warning(f"Delivery blocked — {reason}")
+            elif draft["gate_delivered"]:
+                st.success("✅ Approved for delivery. (Nothing is transmitted by this system.)")
+
+            required = session.required_role()
+            if required:
+                st.caption(f"Governance requires approval by: **{required}**")
+
+            if not session.approval_id:
+                if st.button("Submit for review", type="primary"):
+                    session.submit_for_review()
+                    st.rerun()
+            elif state not in (STATE_APPROVED, STATE_REJECTED):
+                role = st.selectbox("Reviewing as role", _REVIEWER_ROLES, key="rm_role")
+                justification = st.text_input(
+                    "Justification (required to reject)", key="rm_just"
+                )
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button("✅ Approve", use_container_width=True):
+                        try:
+                            session.decide(STATE_APPROVED, reviewer_id=session.rm_id,
+                                           reviewer_role=role)
+                            st.rerun()
+                        except ApprovalError as exc:
+                            st.error(f"Refused — {exc}")
+                with c2:
+                    if st.button("❌ Reject", use_container_width=True):
+                        try:
+                            session.decide(STATE_REJECTED, reviewer_id=session.rm_id,
+                                           reviewer_role=role, justification=justification)
+                            st.rerun()
+                        except ApprovalError as exc:
+                            st.error(f"Refused — {exc}")
+
+            if draft["events"]:
+                st.caption("Approval trail")
+                for e in draft["events"]:
+                    st.markdown(
+                        f"- `{e['timestamp']}` **{e['event']}** by `{e.get('actor')}`"
+                        + (f" — {e['justification']}" if e.get("justification") else "")
+                    )
+            if draft["supporting_facts"]:
+                with st.expander("Supporting facts (every claim, with its source)"):
+                    for f in draft["supporting_facts"]:
+                        st.markdown(f"- **{f['fact']}**: {f['value']}  \n  _source: `{f['source']}`_")
+            _audit_caption(draft["audit"])
+            _feedback_controls(session.draft_envelope, session.rm_id, "draft")
+
+
+# ===========================================================================
 # Main tabs
 # ===========================================================================
-tab_work, tab_uses, tab_log = st.tabs(["🛰️  Workspace", "🧩  What it can do", "🧾  Activity log"])
+tab_work, tab_rm, tab_uses, tab_log = st.tabs(
+    ["🛰️  Workspace", "🤝  RM Co-pilot", "🧩  What it can do", "🧾  Activity log"]
+)
+
+# ---- Tab: RM Co-pilot ------------------------------------------------------
+# Thin rendering shell only. Every decision, fact and gate verdict comes from
+# rm.session / rm.views; this block adds no business logic of its own.
+with tab_rm:
+    render_rm_copilot()
 
 # ---- Tab: What it can do (capability gallery) -----------------------------
 with tab_uses:
