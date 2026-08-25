@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 import unittest
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -148,3 +149,38 @@ class TestRMSurfaceSmoke(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+@unittest.skipUnless(_STREAMLIT, "Streamlit not installed — UI smoke test skipped")
+class TestApprovalDurabilityDefault(unittest.TestCase):
+    """Approvals are audit records; the app must not need an env var to keep them."""
+
+    def setUp(self):
+        self._saved = os.environ.get("FIRMOS_APPROVAL_DB")
+        self._tmp = tempfile.mkdtemp()
+
+    def tearDown(self):
+        if self._saved is None:
+            os.environ.pop("FIRMOS_APPROVAL_DB", None)
+        else:
+            os.environ["FIRMOS_APPROVAL_DB"] = self._saved
+
+    def test_app_defaults_to_durable_storage(self):
+        os.environ["FIRMOS_APPROVAL_DB"] = os.path.join(self._tmp, "a.db")
+        at = AppTest.from_file(APP, default_timeout=90).run()
+        [t for t in at.text_input if t.label == "Find a client"][0].set_value("Acme").run()
+        [b for b in at.button if b.label == "Open client workspace"][0].click().run()
+        [b for b in at.button if "Generate follow-up draft" in b.label][0].click().run()
+        self.assertIn("durably", _captions(at))
+        self.assertNotIn("lost when this process",
+                         " ".join(w.value for w in at.warning))
+
+    def test_opting_out_is_explicit_and_warns(self):
+        """Losing approvals must be a deliberate choice, and still flagged."""
+        os.environ["FIRMOS_APPROVAL_DB"] = "memory"
+        at = AppTest.from_file(APP, default_timeout=90).run()
+        [t for t in at.text_input if t.label == "Find a client"][0].set_value("Acme").run()
+        [b for b in at.button if b.label == "Open client workspace"][0].click().run()
+        [b for b in at.button if "Generate follow-up draft" in b.label][0].click().run()
+        self.assertIn("lost when this process",
+                      " ".join(w.value for w in at.warning))
